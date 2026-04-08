@@ -1,0 +1,8 @@
+.env
+data/*.db
+data/embeddings/
+logs/
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
