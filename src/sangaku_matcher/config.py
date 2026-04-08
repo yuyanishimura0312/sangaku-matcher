@@ -6,6 +6,19 @@ from pathlib import Path
 from pydantic_settings import BaseSettings
 
 
+def _default_db_path() -> Path:
+    """Resolve DB path relative to project root, not CWD."""
+    # In Docker, CWD is /app; locally it may vary
+    candidates = [
+        Path(__file__).resolve().parent.parent.parent.parent / "data" / "matcher.db",
+        Path("data/matcher.db"),
+    ]
+    for p in candidates:
+        if p.exists():
+            return p
+    return candidates[0]
+
+
 class Settings(BaseSettings):
     # --- Paths ---
     matcher_db_path: Path = Path("data/matcher.db")

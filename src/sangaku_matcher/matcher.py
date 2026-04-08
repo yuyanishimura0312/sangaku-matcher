@@ -21,6 +21,15 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class CollaborationHypothesis:
+    """A concrete collaboration hypothesis for a matched company."""
+    title: str
+    description: str
+    collab_type: str  # "joint_research", "license", "contract", "long_term"
+    rationale: str
+
+
+@dataclass
 class RankedCompany:
     rank: int
     edinet_code: str
@@ -29,6 +38,8 @@ class RankedCompany:
     total_score: float
     feature_scores: dict[str, FeatureResult] = field(default_factory=dict)
     recommended_mode: str = "joint_research"
+    collaboration_hypotheses: list[CollaborationHypothesis] = field(default_factory=list)
+    overall_comment: str = ""
 
 
 @dataclass
@@ -82,6 +93,115 @@ def _infer_mode(total_score: float, tech_prox: float) -> str:
     return "long_term"
 
 
+MODE_LABELS = {
+    "joint_research": "共同研究",
+    "license": "ライセンス供与",
+    "contract": "受託研究",
+    "long_term": "中長期研究契約",
+}
+
+
+def _generate_hypotheses(
+    seed: Seed,
+    company_name: str,
+    industry: str,
+    total_score: float,
+    features: dict[str, FeatureResult],
+    mode: str,
+) -> tuple[list[CollaborationHypothesis], str]:
+    """Generate collaboration hypotheses and an overall comment for a match.
+
+    Returns (hypotheses, overall_comment).
+    """
+    tp = features.get("tech_prox", FeatureResult(0, ""))
+    ac = features.get("abs_cap", FeatureResult(0, ""))
+    pt = features.get("past_ties", FeatureResult(0, ""))
+
+    hypotheses: list[CollaborationHypothesis] = []
+
+    # Hypothesis based on tech proximity
+    if tp.value > 0.7:
+        hypotheses.append(CollaborationHypothesis(
+            title=f"{company_name}との技術ライセンス",
+            description=(
+                f"技術近接性が高い（{tp.value:.2f}）ため、当該シーズの技術を"
+                f"{industry}分野の{company_name}にライセンス供与し、"
+                f"事業化を加速する形態が有効と考えられます。"
+            ),
+            collab_type="license",
+            rationale="技術領域の重複度が高く、企業側の既存事業との親和性が見込まれる",
+        ))
+    elif tp.value > 0.4:
+        hypotheses.append(CollaborationHypothesis(
+            title=f"{company_name}との共同研究",
+            description=(
+                f"適度な技術的距離（{tp.value:.2f}）があり、"
+                f"異なる技術知見を組み合わせた共同研究により"
+                f"新たなイノベーションが生まれる可能性があります。"
+            ),
+            collab_type="joint_research",
+            rationale="中程度の技術近接性は、相補的な知識結合に最適な距離",
+        ))
+    else:
+        hypotheses.append(CollaborationHypothesis(
+            title=f"{company_name}との探索的研究連携",
+            description=(
+                f"技術領域の距離が大きい（{tp.value:.2f}）ものの、"
+                f"異分野融合による革新的成果を目指した"
+                f"長期的な探索型研究連携の可能性があります。"
+            ),
+            collab_type="long_term",
+            rationale="技術的距離は大きいが、異分野融合のポテンシャルがある",
+        ))
+
+    # Hypothesis based on absorptive capacity
+    if ac.value > 0.5:
+        hypotheses.append(CollaborationHypothesis(
+            title=f"{company_name}のR&D基盤を活用した実用化加速",
+            description=(
+                f"{company_name}は高い吸収能力（{ac.value:.2f}）を持ち、"
+                f"外部知識の取り込みと事業化に長けています。"
+                f"共同研究の成果を迅速にプロトタイプ化・製品化できる体制が期待されます。"
+            ),
+            collab_type="joint_research",
+            rationale="高い吸収能力は、大学の研究成果を事業価値に変換する能力を示す",
+        ))
+
+    # Hypothesis based on past ties
+    if pt.value > 0.3:
+        hypotheses.append(CollaborationHypothesis(
+            title="既存の産学連携チャネルの活用",
+            description=(
+                f"{company_name}は大学との連携実績があり（{pt.value:.2f}）、"
+                f"共同研究のマネジメント経験や知財管理の仕組みが整っていると推察されます。"
+                f"既存チャネルを通じた速やかな連携開始が期待できます。"
+            ),
+            collab_type="joint_research",
+            rationale="過去の産学連携実績は、新たな連携のスムーズな立ち上げを後押しする",
+        ))
+
+    # Overall comment
+    if total_score > 0.6:
+        level = "高い"
+        outlook = "複数の観点から連携可能性が認められ、具体的な連携協議を推奨します"
+    elif total_score > 0.3:
+        level = "中程度の"
+        outlook = "一部の観点で連携可能性が認められますが、詳細な検討が必要です"
+    else:
+        level = "限定的な"
+        outlook = "現時点では直接的な連携ポイントは限られますが、中長期的な視点での検討余地があります"
+
+    overall = (
+        f"{company_name}（{industry}）は、入力シーズとの連携可能性が{level}と評価されました"
+        f"（総合スコア: {total_score:.2f}）。"
+        f"技術近接性 {tp.value:.2f}、吸収能力 {ac.value:.2f}、連携実績 {pt.value:.2f} の"
+        f"各観点から総合的に判断し、{outlook}。"
+        f"推奨連携形態は「{MODE_LABELS.get(mode, mode)}」です。"
+    )
+
+    return hypotheses, overall
+
+
 def run_match(seed: Seed, top_n: int | None = None) -> MatchResult:
     """Score all companies against the seed, return top N.
 
@@ -129,14 +249,22 @@ def run_match(seed: Seed, top_n: int | None = None) -> MatchResult:
     rankings = []
     for rank_idx, (total, co, features) in enumerate(top, 1):
         tp_score = features.get("tech_prox", FeatureResult(0, "")).value
+        mode = _infer_mode(total, tp_score)
+        rounded_total = round(total, 4)
+        hypotheses, overall_comment = _generate_hypotheses(
+            seed, co["name"], co.get("industry", ""),
+            rounded_total, features, mode,
+        )
         rankings.append(RankedCompany(
             rank=rank_idx,
             edinet_code=co["edinet_code"],
             company_name=co["name"],
             industry=co.get("industry", ""),
-            total_score=round(total, 4),
+            total_score=rounded_total,
             feature_scores=features,
-            recommended_mode=_infer_mode(total, tp_score),
+            recommended_mode=mode,
+            collaboration_hypotheses=hypotheses,
+            overall_comment=overall_comment,
         ))
 
     duration = time.time() - start

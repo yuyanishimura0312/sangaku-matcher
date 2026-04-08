@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: sangaku-matcher
+    runtime: docker
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: "10000"

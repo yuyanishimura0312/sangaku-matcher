@@ -73,11 +73,26 @@ def to_markdown(result: MatchResult) -> str:
             lines.append(f"| {fname} | {fr.value:.4f} | {w:.2f} |")
 
         lines.append("")
-        lines.append("**根拠**:")
+        lines.append("**各観点の評価**:")
         for fname, fr in rc.feature_scores.items():
             if fr.rationale:
-                lines.append(f"- {fr.rationale}")
+                lines.append(f"- **{fname}**: {fr.rationale}")
         lines.append("")
+
+        if rc.overall_comment:
+            lines.append(f"**総合評価**: {rc.overall_comment}")
+            lines.append("")
+
+        if rc.collaboration_hypotheses:
+            lines.append("**連携仮説**:")
+            lines.append("")
+            for i, hyp in enumerate(rc.collaboration_hypotheses, 1):
+                type_ja = MODE_LABELS.get(hyp.collab_type, hyp.collab_type)
+                lines.append(f"{i}. **{hyp.title}** [{type_ja}]")
+                lines.append(f"   {hyp.description}")
+                lines.append(f"   - 根拠: {hyp.rationale}")
+                lines.append("")
+
         lines.append("---")
         lines.append("")
 
@@ -116,6 +131,16 @@ def to_json(result: MatchResult) -> dict:
                     for k, v in rc.feature_scores.items()
                 },
                 "recommended_mode": rc.recommended_mode,
+                "overall_comment": rc.overall_comment,
+                "collaboration_hypotheses": [
+                    {
+                        "title": h.title,
+                        "description": h.description,
+                        "collab_type": h.collab_type,
+                        "rationale": h.rationale,
+                    }
+                    for h in rc.collaboration_hypotheses
+                ],
             }
             for rc in result.rankings
         ],

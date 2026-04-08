@@ -1,5 +1,6 @@
 .env
-data/*.db
+# Track matcher.db for deployment (pre-computed embeddings)
+!data/matcher.db
 data/*.db-journal
 data/embeddings/
 logs/

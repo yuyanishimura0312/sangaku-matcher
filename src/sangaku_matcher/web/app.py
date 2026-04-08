@@ -77,7 +77,9 @@ async def match(
 
 def _load_match_result(seed_id: str):
     """Load a saved match result from DB. Returns (seed, result) or (None, None)."""
-    from sangaku_matcher.matcher import MatchResult, RankedCompany
+    from sangaku_matcher.matcher import (
+        MatchResult, RankedCompany, _generate_hypotheses, _infer_mode,
+    )
     from sangaku_matcher.scoring import FeatureResult
     from sangaku_matcher.seeds import Seed
     import numpy as np
@@ -110,7 +112,12 @@ def _load_match_result(seed_id: str):
         fs = {}
         for k in ("tech_prox", "abs_cap", "past_ties"):
             if r[k] is not None:
-                fs[k] = FeatureResult(r[k], "")
+                fs[k] = FeatureResult(r[k], r.get("rationale") or "")
+        mode = r["recommended_mode"] or "joint_research"
+        hypotheses, overall_comment = _generate_hypotheses(
+            seed, r["name"], r["industry"] or "",
+            r["total_score"], fs, mode,
+        )
         rankings.append(RankedCompany(
             rank=r["rank"],
             edinet_code=r["edinet_code"],
@@ -118,7 +125,9 @@ def _load_match_result(seed_id: str):
             industry=r["industry"] or "",
             total_score=r["total_score"],
             feature_scores=fs,
-            recommended_mode=r["recommended_mode"] or "joint_research",
+            recommended_mode=mode,
+            collaboration_hypotheses=hypotheses,
+            overall_comment=overall_comment,
         ))
 
     result = MatchResult(
