@@ -16,6 +16,12 @@ RUN pip install --no-cache-dir . && \
     apt-get purge -y gcc g++ && apt-get autoremove -y && \
     rm -rf /root/.cache
 
+# Copy static assets and templates into installed package location
+# (pip install doesn't include non-Python data files by default)
+RUN SITE_PKG=$(python -c "import sangaku_matcher.web; import os; print(os.path.dirname(sangaku_matcher.web.__file__))") && \
+    cp -r src/sangaku_matcher/web/static "$SITE_PKG/static" && \
+    cp -r src/sangaku_matcher/web/templates "$SITE_PKG/templates"
+
 # Copy pre-built database
 COPY data/matcher.db data/matcher.db
 
