@@ -50,13 +50,24 @@ async def match(
     from sangaku_matcher.seeds import parse_seed
     from sangaku_matcher.matcher import run_match
 
-    seed = parse_seed(
-        description=description,
-        title=title or description[:60],
-        doi=doi or None,
-        patent_no=patent_no or None,
-    )
-    result = run_match(seed, top_n=top_n)
+    try:
+        seed = parse_seed(
+            description=description,
+            title=title or description[:60],
+            doi=doi or None,
+            patent_no=patent_no or None,
+        )
+        result = run_match(seed, top_n=top_n)
+    except ValueError as e:
+        return templates.TemplateResponse(request, "home.html", {
+            "company_count": _company_count(),
+            "error": str(e),
+        })
+    except Exception:
+        return templates.TemplateResponse(request, "home.html", {
+            "company_count": _company_count(),
+            "error": "マッチング処理中にエラーが発生しました。入力内容を確認してください。",
+        })
 
     return templates.TemplateResponse(request, "result.html", {
         "result": result,
@@ -64,8 +75,8 @@ async def match(
     })
 
 
-@app.get("/result/{seed_id}", response_class=HTMLResponse)
-async def result_page(request: Request, seed_id: str):
+def _load_match_result(seed_id: str):
+    """Load a saved match result from DB. Returns (seed, result) or (None, None)."""
     from sangaku_matcher.matcher import MatchResult, RankedCompany
     from sangaku_matcher.scoring import FeatureResult
     from sangaku_matcher.seeds import Seed
@@ -74,7 +85,7 @@ async def result_page(request: Request, seed_id: str):
     with connect(settings.matcher_db_path) as conn:
         seed_row = conn.execute("SELECT * FROM seeds WHERE seed_id = ?", (seed_id,)).fetchone()
         if not seed_row:
-            return HTMLResponse("Seed not found", status_code=404)
+            return None, None
 
         match_rows = conn.execute(
             "SELECT m.*, c.name, c.industry FROM matches m "
@@ -87,8 +98,8 @@ async def result_page(request: Request, seed_id: str):
         seed_id=seed_row["seed_id"],
         title=seed_row["title"],
         description=seed_row["description"],
-        doi=seed_row["doi"],
-        patent_no=seed_row["patent_no"],
+        doi=seed_row.get("doi"),
+        patent_no=seed_row.get("patent_no"),
         semantic_vector=np.zeros(384),
         source_type=seed_row["source_type"],
         created_at=seed_row["created_at"],
@@ -97,12 +108,9 @@ async def result_page(request: Request, seed_id: str):
     rankings = []
     for r in match_rows:
         fs = {}
-        if r["tech_prox"] is not None:
-            fs["tech_prox"] = FeatureResult(r["tech_prox"], "")
-        if r["abs_cap"] is not None:
-            fs["abs_cap"] = FeatureResult(r["abs_cap"], "")
-        if r["past_ties"] is not None:
-            fs["past_ties"] = FeatureResult(r["past_ties"], "")
+        for k in ("tech_prox", "abs_cap", "past_ties"):
+            if r[k] is not None:
+                fs[k] = FeatureResult(r[k], "")
         rankings.append(RankedCompany(
             rank=r["rank"],
             edinet_code=r["edinet_code"],
@@ -119,6 +127,14 @@ async def result_page(request: Request, seed_id: str):
         executed_at=match_rows[0]["created_at"] if match_rows else "",
         company_count=_company_count(),
     )
+    return seed, result
+
+
+@app.get("/result/{seed_id}", response_class=HTMLResponse)
+async def result_page(request: Request, seed_id: str):
+    seed, result = _load_match_result(seed_id)
+    if seed is None:
+        return HTMLResponse("Seed not found", status_code=404)
 
     return templates.TemplateResponse(request, "result.html", {
         "result": result,
@@ -129,38 +145,11 @@ async def result_page(request: Request, seed_id: str):
 @app.get("/result/{seed_id}/download/{fmt}")
 async def download_result(seed_id: str, fmt: str):
     """Download match result as Markdown or JSON."""
-    # Reuse result_page logic to reconstruct result
-    # For simplicity, regenerate from DB
     from sangaku_matcher.reporter import to_markdown, to_json
-    from sangaku_matcher.matcher import MatchResult, RankedCompany
-    from sangaku_matcher.scoring import FeatureResult
-    from sangaku_matcher.seeds import Seed
-    import numpy as np
 
-    with connect(settings.matcher_db_path) as conn:
-        seed_row = conn.execute("SELECT * FROM seeds WHERE seed_id = ?", (seed_id,)).fetchone()
-        if not seed_row:
-            return Response("Not found", status_code=404)
-        match_rows = conn.execute(
-            "SELECT m.*, c.name, c.industry FROM matches m "
-            "JOIN companies c ON m.edinet_code = c.edinet_code "
-            "WHERE m.seed_id = ? ORDER BY m.rank", (seed_id,),
-        ).fetchall()
-
-    seed = Seed(seed_id=seed_row["seed_id"], title=seed_row["title"],
-                description=seed_row["description"], semantic_vector=np.zeros(384),
-                source_type=seed_row["source_type"], created_at=seed_row["created_at"])
-    rankings = []
-    for r in match_rows:
-        fs = {}
-        for k in ("tech_prox", "abs_cap", "past_ties"):
-            if r[k] is not None:
-                fs[k] = FeatureResult(r[k], r.get("rationale", "") or "")
-        rankings.append(RankedCompany(rank=r["rank"], edinet_code=r["edinet_code"],
-                                       company_name=r["name"], industry=r["industry"] or "",
-                                       total_score=r["total_score"], feature_scores=fs,
-                                       recommended_mode=r["recommended_mode"] or ""))
-    result = MatchResult(seed=seed, rankings=rankings, company_count=_company_count())
+    seed, result = _load_match_result(seed_id)
+    if seed is None:
+        return Response("Not found", status_code=404)
 
     if fmt == "json":
         return JSONResponse(to_json(result),

@@ -7,7 +7,7 @@ from sangaku_matcher.scoring.abs_cap import AbsCapScorer
 
 @pytest.fixture
 def scorer():
-    s = AbsCapScorer(weight=0.35)
+    s = AbsCapScorer()
     s.set_industry_stats({
         "医薬品": (0.12, 0.05),
         "電気機器": (0.04, 0.02),

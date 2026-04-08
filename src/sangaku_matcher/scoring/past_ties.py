@@ -15,8 +15,7 @@ from sangaku_matcher.scoring import FeatureResult
 class PastTiesScorer:
     name = "past_ties"
 
-    def __init__(self, weight: float = 0.30):
-        self.weight = weight
+    def __init__(self):
         # {edinet_code: {uni_name: count}} — loaded from collaborations table
         self._collab_data: dict[str, dict[str, int]] = {}
 

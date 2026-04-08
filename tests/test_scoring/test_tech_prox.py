@@ -7,7 +7,7 @@ from sangaku_matcher.scoring.tech_prox import TechProxScorer
 
 @pytest.fixture
 def scorer():
-    return TechProxScorer(weight=0.35)
+    return TechProxScorer()
 
 
 def _make_company(vec: np.ndarray | None) -> dict:

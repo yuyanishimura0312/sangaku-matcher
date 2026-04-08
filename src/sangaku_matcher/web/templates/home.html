@@ -4,6 +4,10 @@
 <h2>技術シーズを入力</h2>
 <p class="text-muted">大学の技術シーズを入力すると、連携可能性の高い企業を自動で評価します。</p>
 
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
 <form method="post" action="/match">
     <div class="mb-3">
         <label for="title" class="form-label">タイトル</label>

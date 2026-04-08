@@ -19,8 +19,7 @@ from sangaku_matcher.scoring import FeatureResult
 class AbsCapScorer:
     name = "abs_cap"
 
-    def __init__(self, weight: float = 0.35):
-        self.weight = weight
+    def __init__(self):
         # Will be populated from industry_stats table
         self._industry_stats: dict[str, tuple[float, float]] = {}
 

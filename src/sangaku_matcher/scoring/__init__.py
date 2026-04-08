@@ -17,7 +17,6 @@ class FeatureResult:
 class FeatureScorer(Protocol):
     """Interface that all scorers implement."""
     name: str
-    weight: float
 
     def score(self, seed_vector: np.ndarray, company: dict) -> FeatureResult:
         """Score a seed against a company.

@@ -16,8 +16,8 @@ from sangaku_matcher.scoring import FeatureResult
 class TechProxScorer:
     name = "tech_prox"
 
-    def __init__(self, weight: float = 0.35):
-        self.weight = weight
+    def __init__(self):
+        pass
 
     def score(self, seed_vector: np.ndarray, company: dict) -> FeatureResult:
         rd_vec_bytes = company.get("rd_text_vector")

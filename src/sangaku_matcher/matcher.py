@@ -91,11 +91,11 @@ def run_match(seed: Seed, top_n: int | None = None) -> MatchResult:
     industry_stats = _load_industry_stats()
     collab_data = _load_collaboration_data()
 
-    # Initialize scorers
-    tech_prox = TechProxScorer(weight=settings.w_tech_prox)
-    abs_cap = AbsCapScorer(weight=settings.w_abs_cap)
+    # Initialize scorers — weights managed here, not inside scorers
+    tech_prox = TechProxScorer()
+    abs_cap = AbsCapScorer()
     abs_cap.set_industry_stats(industry_stats)
-    past_ties = PastTiesScorer(weight=settings.w_past_ties)
+    past_ties = PastTiesScorer()
     past_ties.set_collaboration_data(collab_data)
 
     scorers = [
