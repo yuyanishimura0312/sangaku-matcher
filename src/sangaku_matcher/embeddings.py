@@ -50,7 +50,14 @@ class _OnnxEmbedder:
         self._tokenizer = AutoTokenizer.from_pretrained(model_name)
         # If path is a local directory with pre-exported ONNX, load directly
         if os.path.isdir(model_name):
-            self._model = ORTModelForFeatureExtraction.from_pretrained(model_name)
+            # Check for quantized model first, fall back to regular
+            quantized = os.path.join(model_name, "model_quantized.onnx")
+            if os.path.exists(quantized):
+                self._model = ORTModelForFeatureExtraction.from_pretrained(
+                    model_name, file_name="model_quantized.onnx"
+                )
+            else:
+                self._model = ORTModelForFeatureExtraction.from_pretrained(model_name)
         else:
             self._model = ORTModelForFeatureExtraction.from_pretrained(
                 model_name, export=True

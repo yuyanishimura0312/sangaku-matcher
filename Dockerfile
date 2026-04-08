@@ -6,7 +6,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ && \
     rm -rf /var/lib/apt/lists/*
 
-# Install lightweight dependencies (NO PyTorch)
+# Install dependencies (NO PyTorch in final image)
 RUN pip install --no-cache-dir \
     click pydantic pydantic-settings python-dotenv requests \
     numpy scipy pandas tenacity pdfplumber \
@@ -25,26 +25,29 @@ RUN SITE_PKG=$(python -c "import sangaku_matcher.web; import os; print(os.path.d
     cp -r src/sangaku_matcher/web/static "$SITE_PKG/static" && \
     cp -r src/sangaku_matcher/web/templates "$SITE_PKG/templates"
 
-# Verify optimum.onnxruntime is importable
-RUN python -c "from optimum.onnxruntime import ORTModelForFeatureExtraction; print('OK')"
-
-# Pre-download and export the ONNX model during build
+# Export model to ONNX and quantize to int8 (~113MB vs 448MB)
 RUN python -c "\
-from optimum.onnxruntime import ORTModelForFeatureExtraction; \
+from optimum.onnxruntime import ORTModelForFeatureExtraction, ORTQuantizer; \
+from optimum.onnxruntime.configuration import AutoQuantizationConfig; \
 from transformers import AutoTokenizer; \
 m = ORTModelForFeatureExtraction.from_pretrained('intfloat/multilingual-e5-small', export=True); \
+m.save_pretrained('/tmp/onnx-fp32'); \
+q = ORTQuantizer.from_pretrained('/tmp/onnx-fp32'); \
+qc = AutoQuantizationConfig.avx2(is_static=False); \
+q.quantize(save_dir='/app/model-cache', quantization_config=qc); \
 t = AutoTokenizer.from_pretrained('intfloat/multilingual-e5-small'); \
-m.save_pretrained('/app/model-cache'); \
 t.save_pretrained('/app/model-cache'); \
-print('Model cached')"
+print('Quantized model cached')" && \
+    rm -rf /tmp/onnx-fp32
 
-# Clean up build deps
-RUN apt-get purge -y gcc g++ && apt-get autoremove -y
+# Clean up build deps and caches
+RUN apt-get purge -y gcc g++ && apt-get autoremove -y && \
+    rm -rf /root/.cache /tmp/*
 
 # Copy pre-built database
 COPY data/matcher.db data/matcher.db
 
-# Use ONNX backend and local model cache in production
+# Use ONNX backend with quantized local model
 ENV USE_ONNX=1
 ENV EMBEDDING_MODEL=/app/model-cache
 ENV PORT=10000
