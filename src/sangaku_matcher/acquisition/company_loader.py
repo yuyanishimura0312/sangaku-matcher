@@ -107,7 +107,43 @@ def _load_dummy() -> None:
                 (ind, mean, std, len(vals), now),
             )
 
-    logger.info("Loaded %d dummy companies with embeddings.", len(DUMMY_COMPANIES))
+        # Insert dummy collaboration data
+        DUMMY_COLLABS = [
+            ("E02144", "東京大学", "joint_patent", 8),
+            ("E02144", "名古屋大学", "joint_patent", 12),
+            ("E02144", "東北大学", "co_authored_paper", 5),
+            ("E01777", "東京大学", "joint_patent", 3),
+            ("E01777", "東京工業大学", "co_authored_paper", 6),
+            ("E00919", "京都大学", "joint_patent", 15),
+            ("E00919", "大阪大学", "co_authored_paper", 9),
+            ("E00919", "東京大学", "joint_patent", 7),
+            ("E00513", "東京大学", "co_authored_paper", 4),
+            ("E00513", "京都大学", "joint_patent", 2),
+            ("E00855", "東京大学", "co_authored_paper", 6),
+            ("E00855", "京都大学", "joint_patent", 3),
+            ("E00855", "東北大学", "co_authored_paper", 2),
+            ("E01225", "東京大学", "joint_patent", 10),
+            ("E01225", "大阪大学", "joint_patent", 4),
+            ("E01225", "東北大学", "co_authored_paper", 7),
+            ("E01110", "東京大学", "joint_patent", 5),
+            ("E01110", "京都大学", "co_authored_paper", 8),
+            ("E01110", "国立がん研究センター", "joint_patent", 11),
+            ("E01619", "名古屋大学", "joint_patent", 9),
+            ("E01619", "東京工業大学", "co_authored_paper", 3),
+            ("E02160", "東京女子医科大学", "joint_patent", 4),
+            ("E02160", "東京大学", "co_authored_paper", 2),
+            ("E01600", "東北大学", "joint_patent", 5),
+            ("E01600", "東京工業大学", "co_authored_paper", 3),
+        ]
+        for edinet_code, uni, collab_type, count in DUMMY_COLLABS:
+            conn.execute(
+                """INSERT OR REPLACE INTO collaborations
+                   (edinet_code, university_name, type, count)
+                   VALUES (?, ?, ?, ?)""",
+                (edinet_code, uni, collab_type, count),
+            )
+
+    logger.info("Loaded %d dummy companies with embeddings and collaborations.", len(DUMMY_COMPANIES))
 
 
 def _load_from_ir_collector() -> None:

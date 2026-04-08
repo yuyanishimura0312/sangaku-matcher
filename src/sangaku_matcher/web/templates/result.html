@@ -1,29 +1,40 @@
 {% extends "base.html" %}
-{% block title %}マッチング結果 — {{ seed.title }}{% endblock %}
+{% block title %}マッチング結果 -- {{ seed.title }}{% endblock %}
 {% block content %}
 <h2>マッチング結果</h2>
-<p>
-    <strong>シーズ</strong>: {{ seed.title }}<br>
-    実行日時: {{ result.executed_at }} |
-    処理時間: {{ result.duration_sec }}秒 |
-    対象企業: {{ result.company_count }}社
-</p>
 
-<div class="mb-3">
-    <a href="/result/{{ seed.seed_id }}/download/md" class="btn btn-outline-secondary btn-sm">Markdownダウンロード</a>
-    <a href="/result/{{ seed.seed_id }}/download/json" class="btn btn-outline-secondary btn-sm">JSONダウンロード</a>
+<div class="card mb-4">
+    <div class="card-header">{{ seed.title }}</div>
+    <div class="card-body">
+        <div class="d-flex gap-4 flex-wrap mb-3">
+            <div>
+                <span class="stat-label">実行日時</span><br>
+                <span style="font-size:0.9rem">{{ result.executed_at }}</span>
+            </div>
+            <div>
+                <span class="stat-label">処理時間</span><br>
+                <span style="font-size:0.9rem">{{ result.duration_sec }}秒</span>
+            </div>
+            <div>
+                <span class="stat-label">対象企業</span><br>
+                <span style="font-size:0.9rem">{{ result.company_count }}社</span>
+            </div>
+        </div>
+        <a href="/result/{{ seed.seed_id }}/download/md" class="btn btn-outline-secondary btn-sm">Markdownダウンロード</a>
+        <a href="/result/{{ seed.seed_id }}/download/json" class="btn btn-outline-secondary btn-sm">JSONダウンロード</a>
+    </div>
 </div>
 
 <table class="table table-striped table-hover">
-    <thead class="table-dark">
+    <thead>
         <tr>
             <th>#</th>
             <th>企業名</th>
             <th>業種</th>
-            <th>総合</th>
-            <th>技術</th>
-            <th>吸収</th>
-            <th>実績</th>
+            <th>総合スコア</th>
+            <th>技術近接</th>
+            <th>吸収能力</th>
+            <th>連携実績</th>
         </tr>
     </thead>
     <tbody>
@@ -31,8 +42,11 @@
         <tr>
             <td>{{ rc.rank }}</td>
             <td><a href="#detail-{{ rc.rank }}">{{ rc.company_name }}</a></td>
-            <td>{{ rc.industry }}</td>
-            <td><strong>{{ "%.2f"|format(rc.total_score) }}</strong></td>
+            <td><span class="badge" style="background:var(--color-muted-bg);color:var(--color-text-muted)">{{ rc.industry }}</span></td>
+            <td>
+                <strong>{{ "%.2f"|format(rc.total_score) }}</strong>
+                <div class="score-bar mt-1"><div class="score-bar-fill" style="width:{{ (rc.total_score * 100)|int }}%"></div></div>
+            </td>
             <td>{{ "%.2f"|format(rc.feature_scores.get("tech_prox", {"value": 0}).value if rc.feature_scores.get("tech_prox") else 0) }}</td>
             <td>{{ "%.2f"|format(rc.feature_scores.get("abs_cap", {"value": 0}).value if rc.feature_scores.get("abs_cap") else 0) }}</td>
             <td>{{ "%.2f"|format(rc.feature_scores.get("past_ties", {"value": 0}).value if rc.feature_scores.get("past_ties") else 0) }}</td>
@@ -41,39 +55,37 @@
     </tbody>
 </table>
 
-<hr>
+<h3 class="mt-4 mb-3">企業別詳細</h3>
 
 {% for rc in result.rankings %}
 <div id="detail-{{ rc.rank }}" class="card mb-3">
     <div class="card-header">
-        <strong>{{ rc.rank }}位: {{ rc.company_name }}</strong> ({{ rc.edinet_code }})
-        — 総合スコア: {{ "%.4f"|format(rc.total_score) }}
+        {{ rc.rank }}位: {{ rc.company_name }} ({{ rc.edinet_code }})
+        -- 総合: {{ "%.4f"|format(rc.total_score) }}
     </div>
     <div class="card-body">
-        <table class="table table-sm w-auto">
-            <thead><tr><th>特徴量</th><th>スコア</th><th>重み</th></tr></thead>
-            <tbody>
-                {% for fname, fr in rc.feature_scores.items() %}
-                <tr>
-                    <td>{{ fname }}</td>
-                    <td>{{ "%.4f"|format(fr.value) }}</td>
-                    <td>{{ {"tech_prox": "0.35", "abs_cap": "0.35", "past_ties": "0.30"}.get(fname, "-") }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        <p><strong>根拠</strong>:</p>
-        <ul>
+        <div class="row mb-3">
             {% for fname, fr in rc.feature_scores.items() %}
-            {% if fr.rationale %}
-            <li>{{ fr.rationale }}</li>
-            {% endif %}
+            <div class="col-md-4 mb-2">
+                <div class="text-subtle" style="font-size:0.78rem">
+                    {{ {"tech_prox": "技術近接性 (w=0.35)", "abs_cap": "吸収能力 (w=0.35)", "past_ties": "連携実績 (w=0.30)"}.get(fname, fname) }}
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <div class="score-bar" style="flex:1"><div class="score-bar-fill" style="width:{{ (fr.value * 100)|int }}%"></div></div>
+                    <span style="font-size:0.85rem;font-weight:600">{{ "%.3f"|format(fr.value) }}</span>
+                </div>
+                {% if fr.rationale %}
+                <div style="font-size:0.78rem;color:var(--color-text-muted);margin-top:0.25rem">{{ fr.rationale }}</div>
+                {% endif %}
+            </div>
             {% endfor %}
-        </ul>
-        <p class="text-muted">推奨連携モード:
-            {{ {"joint_research": "共同研究", "license": "ライセンス", "contract": "受託開発", "long_term": "中長期研究契約"}.get(rc.recommended_mode, rc.recommended_mode) }}
-        </p>
-        <a href="/company/{{ rc.edinet_code }}" class="btn btn-outline-primary btn-sm">企業詳細</a>
+        </div>
+        <div class="d-flex align-items-center gap-3">
+            <span class="badge" style="background:var(--color-accent-light);color:var(--color-accent-dark)">
+                {{ {"joint_research": "共同研究", "license": "ライセンス", "contract": "受託開発", "long_term": "中長期研究契約"}.get(rc.recommended_mode, rc.recommended_mode) }}
+            </span>
+            <a href="/company/{{ rc.edinet_code }}" class="btn btn-outline-secondary btn-sm">企業詳細</a>
+        </div>
     </div>
 </div>
 {% endfor %}

@@ -1,55 +1,69 @@
 {% extends "base.html" %}
-{% block title %}{{ company.name }} — sangaku-matcher{% endblock %}
+{% block title %}{{ company.name }} -- sangaku-matcher{% endblock %}
 {% block content %}
 <h2>{{ company.name }}</h2>
 <p class="text-muted">
     EDINET: {{ company.edinet_code }}
-    {% if company.sec_code %}| 証券: {{ company.sec_code }}{% endif %}
-    {% if company.industry %}| 業種: {{ company.industry }}{% endif %}
+    {% if company.sec_code %} | 証券: {{ company.sec_code }}{% endif %}
+    {% if company.industry %} | <span class="badge" style="background:var(--color-muted-bg);color:var(--color-text-muted)">{{ company.industry }}</span>{% endif %}
 </p>
 
 <div class="row mb-4">
     <div class="col-md-6">
-        <h5>財務指標</h5>
-        <table class="table table-sm">
-            <tr><td>売上高</td><td>{{ "{:,.0f}".format(company.revenue) if company.revenue else "-" }} 百万円</td></tr>
-            <tr><td>営業利益</td><td>{{ "{:,.0f}".format(company.operating_profit) if company.operating_profit else "-" }} 百万円</td></tr>
-            <tr><td>研究開発費</td><td>{{ "{:,.0f}".format(company.rd_expense) if company.rd_expense else "-" }} 百万円</td></tr>
-            <tr><td>R&D比率</td><td>{{ "{:.1%}".format(company.rd_intensity) if company.rd_intensity else "-" }}</td></tr>
-            <tr><td>従業員数</td><td>{{ "{:,}".format(company.employees) if company.employees else "-" }} 名</td></tr>
-        </table>
+        <div class="card">
+            <div class="card-header">財務指標</div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tr><td class="text-subtle">売上高</td><td>{{ "{:,.0f}".format(company.revenue) if company.revenue else "-" }} 百万円</td></tr>
+                    <tr><td class="text-subtle">営業利益</td><td>{{ "{:,.0f}".format(company.operating_profit) if company.operating_profit else "-" }} 百万円</td></tr>
+                    <tr><td class="text-subtle">研究開発費</td><td><strong>{{ "{:,.0f}".format(company.rd_expense) if company.rd_expense else "-" }}</strong> 百万円</td></tr>
+                    <tr><td class="text-subtle">R&D比率</td><td>{{ "{:.1%}".format(company.rd_intensity) if company.rd_intensity else "-" }}</td></tr>
+                    <tr><td class="text-subtle">従業員数</td><td>{{ "{:,}".format(company.employees) if company.employees else "-" }} 名</td></tr>
+                </table>
+            </div>
+        </div>
     </div>
     <div class="col-md-6">
-        <h5>スコア情報</h5>
-        <table class="table table-sm">
-            <tr><td>OI成熟度</td><td>{{ "%.2f"|format(company.open_inno_score) if company.open_inno_score else "未評価" }}</td></tr>
-            <tr><td>潜在ニーズ推定</td><td>{{ company.needs_generated_at[:10] if company.needs_generated_at else "未実施" }}</td></tr>
-        </table>
+        <div class="card">
+            <div class="card-header">スコア情報</div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tr><td class="text-subtle">OI成熟度</td><td>{{ "%.2f"|format(company.open_inno_score) if company.open_inno_score else "未評価" }}</td></tr>
+                    <tr><td class="text-subtle">潜在ニーズ推定</td><td>{{ company.needs_generated_at[:10] if company.needs_generated_at else "未実施" }}</td></tr>
+                </table>
+            </div>
+        </div>
     </div>
 </div>
 
 {% if company.rd_text %}
-<h5>研究開発活動 (有報より)</h5>
-<div class="border rounded p-3 mb-3" style="max-height: 300px; overflow-y: auto;">
-    <p style="white-space: pre-wrap;">{{ company.rd_text[:2000] }}{% if company.rd_text|length > 2000 %}...{% endif %}</p>
+<div class="card mb-4">
+    <div class="card-header">研究開発活動 (有報より)</div>
+    <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+        <p style="white-space: pre-wrap; font-size: 0.88rem; line-height: 1.8;">{{ company.rd_text[:2000] }}{% if company.rd_text|length > 2000 %}...{% endif %}</p>
+    </div>
 </div>
 {% endif %}
 
 {% if collaborations %}
-<h5>大学連携実績</h5>
-<table class="table table-sm">
-    <thead><tr><th>大学</th><th>種別</th><th>件数</th><th>直近年</th></tr></thead>
-    <tbody>
-        {% for c in collaborations %}
-        <tr>
-            <td>{{ c.university_name }}</td>
-            <td>{{ {"patent": "共同特許", "paper": "共著論文"}.get(c.type, c.type) }}</td>
-            <td>{{ c.count }}</td>
-            <td>{{ c.last_year or "-" }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+<div class="card mb-4">
+    <div class="card-header">大学連携実績</div>
+    <div class="card-body">
+        <table class="table table-sm table-striped mb-0">
+            <thead><tr><th>大学</th><th>種別</th><th>件数</th><th>直近年</th></tr></thead>
+            <tbody>
+                {% for c in collaborations %}
+                <tr>
+                    <td>{{ c.university_name }}</td>
+                    <td>{{ {"joint_patent": "共同特許", "co_authored_paper": "共著論文", "patent": "共同特許", "paper": "共著論文"}.get(c.type, c.type) }}</td>
+                    <td>{{ c.count }}</td>
+                    <td>{{ c.last_year or "-" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
 {% else %}
 <p class="text-muted">大学連携実績データなし</p>
 {% endif %}

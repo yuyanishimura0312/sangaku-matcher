@@ -9,22 +9,26 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <nav class="navbar navbar-expand-sm navbar-dark bg-dark mb-4">
+    <nav class="site-nav">
         <div class="container">
-            <a class="navbar-brand" href="/">sangaku-matcher</a>
-            <div class="navbar-nav ms-auto">
-                <a class="nav-link" href="/">新規入力</a>
-                <a class="nav-link" href="/results">結果一覧</a>
-                <a class="nav-link" href="/companies">企業一覧</a>
-            </div>
+            <a class="brand" href="/">
+                <div>
+                    <div class="brand-name">sangaku-matcher</div>
+                    <div class="brand-tag">Miratuku Lab</div>
+                </div>
+            </a>
+            <ul class="nav-links">
+                <li><a href="/" {% if request.url.path == "/" %}class="active"{% endif %}>シーズ入力</a></li>
+                <li><a href="/results" {% if request.url.path == "/results" %}class="active"{% endif %}>結果一覧</a></li>
+                <li><a href="/companies" {% if "/companies" in request.url.path %}class="active"{% endif %}>企業一覧</a></li>
+            </ul>
         </div>
     </nav>
-    <div class="container">
+    <div class="main-container">
         {% block content %}{% endblock %}
     </div>
-    <footer class="container mt-5 mb-3 text-muted small">
-        <hr>
-        <p>sangaku-matcher v0.1 — 本結果はAIによる仮説であり、最終的な連携判断は専門家の評価に基づいて行ってください。</p>
+    <footer class="site-footer">
+        <p>sangaku-matcher v0.1 by Miratuku Lab -- AI-assisted matching results are hypotheses; final collaboration decisions should be made with expert evaluation.</p>
     </footer>
 </body>
 </html>
