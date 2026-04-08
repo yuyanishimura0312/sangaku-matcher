@@ -1,4 +1,4 @@
-FROM python:3.13-slim AS builder
+FROM python:3.13-slim
 
 WORKDIR /app
 
@@ -9,21 +9,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ && \
 # Install CPU-only PyTorch first (much smaller than default CUDA version)
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
-# Install app dependencies
+# Copy source and install app
 COPY pyproject.toml .
-RUN pip install --no-cache-dir . && rm -rf /root/.cache
-
-# --- Runtime stage ---
-FROM python:3.13-slim
-
-WORKDIR /app
-
-# Copy installed packages from builder
-COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
-
-# Copy application code and pre-built database
 COPY src/ src/
+RUN pip install --no-cache-dir . && \
+    apt-get purge -y gcc g++ && apt-get autoremove -y && \
+    rm -rf /root/.cache
+
+# Copy pre-built database
 COPY data/matcher.db data/matcher.db
 
 ENV PORT=10000
