@@ -1,8 +1,17 @@
 .env
 data/*.db
+data/*.db-journal
 data/embeddings/
 logs/
 __pycache__/
 *.pyc
+*.pyo
 .venv/
+venv/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
 .DS_Store
+.idea/
+.vscode/

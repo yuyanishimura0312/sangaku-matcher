@@ -1,0 +1,5 @@
+/* sangaku-matcher minimal overrides */
+body { font-family: "Hiragino Sans", "Noto Sans JP", sans-serif; }
+.card-header { font-size: 1.05rem; }
+.table th { white-space: nowrap; }
+footer p { font-size: 0.85rem; }

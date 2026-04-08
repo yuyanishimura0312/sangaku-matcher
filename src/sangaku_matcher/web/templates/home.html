@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}sangaku-matcher — 技術シーズ入力{% endblock %}
+{% block content %}
+<h2>技術シーズを入力</h2>
+<p class="text-muted">大学の技術シーズを入力すると、連携可能性の高い企業を自動で評価します。</p>
+
+<form method="post" action="/match">
+    <div class="mb-3">
+        <label for="title" class="form-label">タイトル</label>
+        <input type="text" class="form-control" id="title" name="title" placeholder="技術シーズの名称">
+    </div>
+
+    <div class="mb-3">
+        <label for="description" class="form-label">技術の説明 <span class="text-danger">*</span></label>
+        <textarea class="form-control" id="description" name="description" rows="8"
+                  placeholder="200〜2000字で技術の概要、応用分野、特徴を記述してください" required minlength="10"></textarea>
+    </div>
+
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <label for="doi" class="form-label">論文DOI (任意)</label>
+            <input type="text" class="form-control" id="doi" name="doi" placeholder="10.xxxx/xxxxx">
+        </div>
+        <div class="col-md-6">
+            <label for="patent_no" class="form-label">特許番号 (任意)</label>
+            <input type="text" class="form-control" id="patent_no" name="patent_no" placeholder="特開2024-123456">
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <label for="top_n" class="form-label">表示件数</label>
+        <select class="form-select w-auto" id="top_n" name="top_n">
+            <option value="5">5社</option>
+            <option value="10" selected>10社</option>
+            <option value="20">20社</option>
+        </select>
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-lg" id="submit-btn">マッチング実行</button>
+</form>
+
+<hr class="mt-4">
+<p class="text-muted small">
+    対象: {{ company_count }}社 | スコアリング: TechProx + AbsCap + PastTies
+</p>
+
+<script>
+document.querySelector('form').addEventListener('submit', function() {
+    const btn = document.getElementById('submit-btn');
+    btn.disabled = true;
+    btn.textContent = 'マッチング実行中...';
+});
+</script>
+{% endblock %}

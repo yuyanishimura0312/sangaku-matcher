@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}結果一覧 — sangaku-matcher{% endblock %}
+{% block content %}
+<h2>過去のマッチング結果</h2>
+
+{% if results %}
+<table class="table table-striped">
+    <thead class="table-dark">
+        <tr><th>日時</th><th>シーズ</th><th>候補数</th><th>最高スコア</th><th></th></tr>
+    </thead>
+    <tbody>
+        {% for r in results %}
+        <tr>
+            <td>{{ r.created_at[:16] }}</td>
+            <td>{{ r.title[:50] }}</td>
+            <td>{{ r.match_count }}</td>
+            <td>{{ "%.2f"|format(r.top_score) if r.top_score else "-" }}</td>
+            <td><a href="/result/{{ r.seed_id }}" class="btn btn-outline-primary btn-sm">表示</a></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<nav>
+    <ul class="pagination">
+        {% if page > 1 %}<li class="page-item"><a class="page-link" href="?page={{ page - 1 }}">前へ</a></li>{% endif %}
+        <li class="page-item disabled"><span class="page-link">{{ page }} / {{ total_pages }}</span></li>
+        {% if page < total_pages %}<li class="page-item"><a class="page-link" href="?page={{ page + 1 }}">次へ</a></li>{% endif %}
+    </ul>
+</nav>
+{% else %}
+<p class="text-muted">まだマッチング結果がありません。<a href="/">新しいシーズを入力</a>してください。</p>
+{% endif %}
+{% endblock %}

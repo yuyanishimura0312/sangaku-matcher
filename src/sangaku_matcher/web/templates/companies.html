@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}企業一覧 — sangaku-matcher{% endblock %}
+{% block content %}
+<h2>企業データベース ({{ total }}社)</h2>
+
+<form method="get" class="row g-2 mb-3">
+    <div class="col-md-4">
+        <input type="text" class="form-control" name="q" value="{{ q }}" placeholder="企業名で検索">
+    </div>
+    <div class="col-md-3">
+        <select class="form-select" name="industry">
+            <option value="">全業種</option>
+            {% for ind in industries %}
+            <option value="{{ ind }}" {{ "selected" if ind == industry else "" }}>{{ ind }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-2">
+        <select class="form-select" name="sort">
+            <option value="rd_expense" {{ "selected" if sort == "rd_expense" else "" }}>R&D費</option>
+            <option value="revenue" {{ "selected" if sort == "revenue" else "" }}>売上高</option>
+            <option value="rd_intensity" {{ "selected" if sort == "rd_intensity" else "" }}>R&D比率</option>
+            <option value="name" {{ "selected" if sort == "name" else "" }}>企業名</option>
+        </select>
+    </div>
+    <div class="col-md-1">
+        <button type="submit" class="btn btn-primary">検索</button>
+    </div>
+</form>
+
+<table class="table table-striped table-hover">
+    <thead class="table-dark">
+        <tr>
+            <th>企業名</th>
+            <th>EDINET</th>
+            <th>業種</th>
+            <th>売上高(百万円)</th>
+            <th>R&D費(百万円)</th>
+            <th>R&D比率</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for co in companies %}
+        <tr>
+            <td><a href="/company/{{ co.edinet_code }}">{{ co.name }}</a></td>
+            <td>{{ co.edinet_code }}</td>
+            <td>{{ co.industry or "-" }}</td>
+            <td>{{ "{:,.0f}".format(co.revenue) if co.revenue else "-" }}</td>
+            <td>{{ "{:,.0f}".format(co.rd_expense) if co.rd_expense else "-" }}</td>
+            <td>{{ "{:.1%}".format(co.rd_intensity) if co.rd_intensity else "-" }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<nav>
+    <ul class="pagination">
+        {% if page > 1 %}<li class="page-item"><a class="page-link" href="?q={{ q }}&industry={{ industry }}&sort={{ sort }}&page={{ page - 1 }}">前へ</a></li>{% endif %}
+        <li class="page-item disabled"><span class="page-link">{{ page }} / {{ total_pages }}</span></li>
+        {% if page < total_pages %}<li class="page-item"><a class="page-link" href="?q={{ q }}&industry={{ industry }}&sort={{ sort }}&page={{ page + 1 }}">次へ</a></li>{% endif %}
+    </ul>
+</nav>
+{% endblock %}

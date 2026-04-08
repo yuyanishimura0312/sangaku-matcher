@@ -46,10 +46,12 @@ def to_markdown(result: MatchResult) -> str:
         tp = fs.get("tech_prox")
         ac = fs.get("abs_cap")
         pt = fs.get("past_ties")
+        tp_str = f"{tp.value:.2f}" if tp else "-"
+        ac_str = f"{ac.value:.2f}" if ac else "-"
+        pt_str = f"{pt.value:.2f}" if pt else "-"
         lines.append(
             f"| {rc.rank} | {rc.company_name} | {rc.industry} | "
-            f"{rc.total_score:.2f} | {tp.value:.2f if tp else '-'} | "
-            f"{ac.value:.2f if ac else '-'} | {pt.value:.2f if pt else '-'} |"
+            f"{rc.total_score:.2f} | {tp_str} | {ac_str} | {pt_str} |"
         )
 
     lines.append("")
