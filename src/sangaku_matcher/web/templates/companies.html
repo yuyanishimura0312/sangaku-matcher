@@ -16,27 +16,28 @@
         </select>
     </div>
     <div class="col-md-2">
-        <select class="form-select" name="sort">
-            <option value="rd_expense" {{ "selected" if sort == "rd_expense" else "" }}>R&D費</option>
-            <option value="revenue" {{ "selected" if sort == "revenue" else "" }}>売上高</option>
-            <option value="rd_intensity" {{ "selected" if sort == "rd_intensity" else "" }}>R&D比率</option>
-            <option value="name" {{ "selected" if sort == "name" else "" }}>企業名</option>
+        <select class="form-select" name="sort" aria-label="並び替え">
+            <option value="rd_expense" {{ "selected" if sort == "rd_expense" else "" }}>R&D費順</option>
+            <option value="revenue" {{ "selected" if sort == "revenue" else "" }}>売上高順</option>
+            <option value="rd_intensity" {{ "selected" if sort == "rd_intensity" else "" }}>R&D比率順</option>
+            <option value="name" {{ "selected" if sort == "name" else "" }}>企業名順</option>
         </select>
     </div>
-    <div class="col-md-1">
-        <button type="submit" class="btn btn-primary">検索</button>
+    <div class="col-md-2">
+        <button type="submit" class="btn btn-primary w-100">検索</button>
     </div>
 </form>
 
-<table class="table table-striped table-hover">
-    <thead >
+<div class="table-responsive-wrap">
+<table class="table table-striped table-hover" aria-label="企業データベース一覧">
+    <thead>
         <tr>
-            <th>企業名</th>
-            <th>EDINET</th>
-            <th>業種</th>
-            <th>売上高(百万円)</th>
-            <th>R&D費(百万円)</th>
-            <th>R&D比率</th>
+            <th scope="col">企業名</th>
+            <th scope="col">EDINET</th>
+            <th scope="col">業種</th>
+            <th scope="col">売上高 (百万円)</th>
+            <th scope="col">R&D費 (百万円)</th>
+            <th scope="col">R&D比率</th>
         </tr>
     </thead>
     <tbody>
@@ -45,15 +46,16 @@
             <td><a href="/company/{{ co.edinet_code }}">{{ co.name }}</a></td>
             <td>{{ co.edinet_code }}</td>
             <td>{{ co.industry or "-" }}</td>
-            <td>{{ "{:,.0f}".format(co.revenue) if co.revenue else "-" }}</td>
-            <td>{{ "{:,.0f}".format(co.rd_expense) if co.rd_expense else "-" }}</td>
-            <td>{{ "{:.1%}".format(co.rd_intensity) if co.rd_intensity else "-" }}</td>
+            <td class="text-end">{{ "{:,.0f}".format(co.revenue) if co.revenue else "-" }}</td>
+            <td class="text-end">{{ "{:,.0f}".format(co.rd_expense) if co.rd_expense else "-" }}</td>
+            <td class="text-end">{{ "{:.1%}".format(co.rd_intensity) if co.rd_intensity else "-" }}</td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
+</div>
 
-<nav>
+<nav aria-label="ページナビゲーション">
     <ul class="pagination">
         {% if page > 1 %}<li class="page-item"><a class="page-link" href="?q={{ q }}&industry={{ industry }}&sort={{ sort }}&page={{ page - 1 }}">前へ</a></li>{% endif %}
         <li class="page-item disabled"><span class="page-link">{{ page }} / {{ total_pages }}</span></li>

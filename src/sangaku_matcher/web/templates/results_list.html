@@ -4,24 +4,32 @@
 <h2>過去のマッチング結果</h2>
 
 {% if results %}
-<table class="table table-striped">
-    <thead >
-        <tr><th>日時</th><th>シーズ</th><th>候補数</th><th>最高スコア</th><th></th></tr>
+<div class="table-responsive-wrap">
+<table class="table table-striped" aria-label="過去のマッチング結果一覧">
+    <thead>
+        <tr>
+            <th scope="col">日時</th>
+            <th scope="col">シーズ</th>
+            <th scope="col">候補数</th>
+            <th scope="col">最高スコア</th>
+            <th scope="col"><span class="visually-hidden">操作</span></th>
+        </tr>
     </thead>
     <tbody>
         {% for r in results %}
         <tr>
             <td>{{ r.created_at[:16] }}</td>
-            <td>{{ r.title[:50] }}</td>
-            <td>{{ r.match_count }}</td>
+            <td>{{ r.title[:50] }}{% if r.title|length > 50 %}...{% endif %}</td>
+            <td>{{ r.match_count }}社</td>
             <td>{{ "%.2f"|format(r.top_score) if r.top_score else "-" }}</td>
-            <td><a href="/result/{{ r.seed_id }}" class="btn btn-outline-primary btn-sm">表示</a></td>
+            <td><a href="/result/{{ r.seed_id }}" class="btn btn-outline-primary btn-sm">詳細を表示</a></td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
+</div>
 
-<nav>
+<nav aria-label="ページナビゲーション">
     <ul class="pagination">
         {% if page > 1 %}<li class="page-item"><a class="page-link" href="?page={{ page - 1 }}">前へ</a></li>{% endif %}
         <li class="page-item disabled"><span class="page-link">{{ page }} / {{ total_pages }}</span></li>
@@ -29,6 +37,11 @@
     </ul>
 </nav>
 {% else %}
-<p class="text-muted">まだマッチング結果がありません。<a href="/">新しいシーズを入力</a>してください。</p>
+<div class="empty-state">
+    <div class="empty-icon">--</div>
+    <div class="empty-title">マッチング結果がまだありません</div>
+    <div class="empty-desc">技術シーズを入力してマッチングを実行すると、ここに結果の履歴が表示されます。</div>
+    <a href="/" class="btn btn-primary">シーズを入力する</a>
+</div>
 {% endif %}
 {% endblock %}

@@ -25,16 +25,17 @@
     </div>
 </div>
 
-<table class="table table-striped table-hover">
+<div class="table-responsive-wrap">
+<table class="table table-striped table-hover" aria-label="マッチング結果ランキング">
     <thead>
         <tr>
-            <th>#</th>
-            <th>企業名</th>
-            <th>業種</th>
-            <th>総合スコア</th>
-            <th>技術近接</th>
-            <th>吸収能力</th>
-            <th>連携実績</th>
+            <th scope="col">#</th>
+            <th scope="col">企業名</th>
+            <th scope="col">業種</th>
+            <th scope="col">総合スコア</th>
+            <th scope="col">技術近接</th>
+            <th scope="col">吸収能力</th>
+            <th scope="col">連携実績</th>
         </tr>
     </thead>
     <tbody>
@@ -54,6 +55,7 @@
         {% endfor %}
     </tbody>
 </table>
+</div>
 
 <h3 class="mt-4 mb-3">企業別詳細</h3>
 

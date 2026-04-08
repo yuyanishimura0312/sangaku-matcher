@@ -9,7 +9,8 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <nav class="site-nav">
+    <a class="skip-link" href="#main-content">本文へスキップ</a>
+    <nav class="site-nav" aria-label="メインナビゲーション">
         <div class="container">
             <a class="brand" href="/">
                 <div>
@@ -17,18 +18,18 @@
                     <div class="brand-tag">Miratuku Lab</div>
                 </div>
             </a>
-            <ul class="nav-links">
-                <li><a href="/" {% if request.url.path == "/" %}class="active"{% endif %}>シーズ入力</a></li>
-                <li><a href="/results" {% if request.url.path == "/results" %}class="active"{% endif %}>結果一覧</a></li>
-                <li><a href="/companies" {% if "/companies" in request.url.path %}class="active"{% endif %}>企業一覧</a></li>
+            <ul class="nav-links" role="list">
+                <li><a href="/" {% if request.url.path == "/" %}class="active" aria-current="page"{% endif %}>シーズ入力</a></li>
+                <li><a href="/results" {% if request.url.path == "/results" %}class="active" aria-current="page"{% endif %}>結果一覧</a></li>
+                <li><a href="/companies" {% if "/companies" in request.url.path %}class="active" aria-current="page"{% endif %}>企業一覧</a></li>
             </ul>
         </div>
     </nav>
-    <div class="main-container">
+    <main id="main-content" class="main-container">
         {% block content %}{% endblock %}
-    </div>
-    <footer class="site-footer">
-        <p>sangaku-matcher v0.1 by Miratuku Lab -- AI-assisted matching results are hypotheses; final collaboration decisions should be made with expert evaluation.</p>
+    </main>
+    <footer class="site-footer" role="contentinfo">
+        <p>sangaku-matcher v0.1 by Miratuku Lab -- AIによるマッチング結果は仮説です。最終的な連携判断は専門家の評価を経て行ってください。</p>
     </footer>
 </body>
 </html>

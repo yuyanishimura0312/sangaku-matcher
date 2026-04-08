@@ -2,41 +2,52 @@
 {% block title %}sangaku-matcher -- 技術シーズ入力{% endblock %}
 {% block content %}
 <h2>技術シーズを入力</h2>
-<p class="text-muted">大学の技術シーズを入力すると、連携可能性の高い企業を自動で評価します。</p>
+<p class="text-muted">大学の技術シーズを入力すると、連携可能性の高い企業をAIが自動評価します。現在 <strong>{{ company_count }}社</strong> のデータベースから最適な候補を提案します。</p>
 
 {% if error %}
-<div class="alert alert-danger">{{ error }}</div>
+<div class="alert alert-danger" role="alert">
+    <strong>エラー:</strong> {{ error }}
+</div>
 {% endif %}
 
 <div class="card">
     <div class="card-header">シーズ情報</div>
     <div class="card-body">
-        <form method="post" action="/match">
+        <form method="post" action="/match" id="match-form">
             <div class="mb-3">
                 <label for="title" class="form-label">タイトル</label>
-                <input type="text" class="form-control" id="title" name="title" placeholder="技術シーズの名称">
+                <input type="text" class="form-control" id="title" name="title"
+                       placeholder="例: 光触媒を用いた水質浄化技術"
+                       aria-describedby="title-help">
+                <div id="title-help" class="form-text" style="font-size:0.78rem;color:var(--color-text-subtle)">未入力の場合、説明文の冒頭が自動設定されます</div>
             </div>
 
             <div class="mb-3">
-                <label for="description" class="form-label">技術の説明 <span style="color:var(--color-danger)">*</span></label>
+                <label for="description" class="form-label">技術の説明 <span class="text-danger" aria-label="必須">*</span></label>
                 <textarea class="form-control" id="description" name="description" rows="8"
-                          placeholder="200〜2000字で技術の概要、応用分野、特徴を記述してください" required minlength="10"></textarea>
+                          placeholder="技術の概要、応用分野、独自性を200〜2000字で記述してください。&#10;&#10;例: 本技術は酸化チタン系光触媒を用いて、可視光下で水中の有機汚染物質を分解する手法です。従来手法と比較して触媒効率が3倍向上し、産業排水処理への応用が期待されます。"
+                          required minlength="10"
+                          aria-describedby="desc-help desc-counter"></textarea>
+                <div class="d-flex justify-content-between">
+                    <div id="desc-help" class="form-text" style="font-size:0.78rem;color:var(--color-text-subtle)">技術の概要・応用分野・特徴を具体的に記述してください</div>
+                    <div id="desc-counter" class="char-counter" aria-live="polite">0 / 2000字</div>
+                </div>
             </div>
 
             <div class="row mb-3">
                 <div class="col-md-6">
-                    <label for="doi" class="form-label">論文DOI (任意)</label>
-                    <input type="text" class="form-control" id="doi" name="doi" placeholder="10.xxxx/xxxxx">
+                    <label for="doi" class="form-label">論文DOI <span class="text-subtle" style="font-weight:400;font-size:0.82rem">(任意)</span></label>
+                    <input type="text" class="form-control" id="doi" name="doi" placeholder="例: 10.1234/abcde">
                 </div>
                 <div class="col-md-6">
-                    <label for="patent_no" class="form-label">特許番号 (任意)</label>
-                    <input type="text" class="form-control" id="patent_no" name="patent_no" placeholder="特開2024-123456">
+                    <label for="patent_no" class="form-label">特許番号 <span class="text-subtle" style="font-weight:400;font-size:0.82rem">(任意)</span></label>
+                    <input type="text" class="form-control" id="patent_no" name="patent_no" placeholder="例: 特開2024-123456">
                 </div>
             </div>
 
-            <div class="mb-3">
+            <div class="mb-4">
                 <label for="top_n" class="form-label">表示件数</label>
-                <select class="form-select w-auto" id="top_n" name="top_n">
+                <select class="form-select w-auto" id="top_n" name="top_n" aria-label="マッチング候補の表示件数">
                     <option value="5">5社</option>
                     <option value="10" selected>10社</option>
                     <option value="20">20社</option>
@@ -48,10 +59,10 @@
     </div>
 </div>
 
-<div class="d-flex gap-4 mt-4" style="justify-content: center;">
+<div class="hero-stats">
     <div class="text-center">
         <div class="stat-number">{{ company_count }}</div>
-        <div class="stat-label">登録企業</div>
+        <div class="stat-label">登録企業数</div>
     </div>
     <div class="text-center">
         <div class="stat-number">3</div>
@@ -60,10 +71,21 @@
 </div>
 
 <script>
-document.querySelector('form').addEventListener('submit', function() {
+// Loading state with spinner on form submit
+document.getElementById('match-form').addEventListener('submit', function() {
     const btn = document.getElementById('submit-btn');
     btn.disabled = true;
-    btn.textContent = 'マッチング実行中...';
+    btn.classList.add('btn-loading');
+    btn.textContent = 'マッチング実行中';
+});
+
+// Character counter for description textarea
+const desc = document.getElementById('description');
+const counter = document.getElementById('desc-counter');
+desc.addEventListener('input', function() {
+    const len = this.value.length;
+    counter.textContent = len + ' / 2000字';
+    counter.classList.toggle('over-limit', len > 2000);
 });
 </script>
 {% endblock %}
