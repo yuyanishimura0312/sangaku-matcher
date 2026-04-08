@@ -102,6 +102,9 @@ CREATE INDEX IF NOT EXISTS idx_co_name ON companies(name);
 CREATE INDEX IF NOT EXISTS idx_match_seed ON matches(seed_id);
 CREATE INDEX IF NOT EXISTS idx_match_score ON matches(seed_id, total_score DESC);
 CREATE INDEX IF NOT EXISTS idx_collab_uni ON collaborations(university_name);
+CREATE INDEX IF NOT EXISTS idx_co_updated_at ON companies(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_match_created_at ON matches(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_seed_created_at ON seeds(created_at DESC);
 """
 
 

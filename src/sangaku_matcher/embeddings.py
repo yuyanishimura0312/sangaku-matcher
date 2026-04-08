@@ -33,7 +33,7 @@ def encode(texts: list[str]) -> np.ndarray:
     Returns shape (len(texts), 384) float32 array.
     """
     model = _get_model()
-    vecs = model.encode(texts, show_progress_bar=False, convert_to_numpy=True)
+    vecs = model.encode(texts, batch_size=32, show_progress_bar=False, convert_to_numpy=True)
     return vecs.astype(np.float32)
 
 

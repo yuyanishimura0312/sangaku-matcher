@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -39,32 +40,34 @@ class MatchResult:
     company_count: int = 0
 
 
-def _load_companies() -> list[dict]:
-    """Load all companies from DB as list of dicts."""
-    with connect(settings.matcher_db_path) as conn:
-        rows = conn.execute(
-            "SELECT * FROM companies ORDER BY rd_expense DESC"
-        ).fetchall()
+def _load_companies(conn) -> list[dict]:
+    """Load all companies from DB as list of dicts.
+
+    Selects only the columns needed for scoring to reduce memory usage.
+    """
+    rows = conn.execute(
+        """SELECT edinet_code, name, industry, rd_expense, rd_intensity,
+                  rd_text_vector, needs_vector, open_inno_score
+           FROM companies ORDER BY rd_expense DESC"""
+    ).fetchall()
     return [dict(r) for r in rows]
 
 
-def _load_industry_stats() -> dict[str, tuple[float, float]]:
+def _load_industry_stats(conn) -> dict[str, tuple[float, float]]:
     """Load industry normalization stats."""
-    with connect(settings.matcher_db_path) as conn:
-        rows = conn.execute("SELECT * FROM industry_stats").fetchall()
+    rows = conn.execute("SELECT * FROM industry_stats").fetchall()
     return {r["industry"]: (r["mean_rd_int"], r["std_rd_int"]) for r in rows}
 
 
-def _load_collaboration_data() -> dict[str, dict[str, int]]:
-    """Load collaboration data grouped by company."""
-    with connect(settings.matcher_db_path) as conn:
-        rows = conn.execute("SELECT * FROM collaborations").fetchall()
-    result: dict[str, dict[str, int]] = {}
+def _load_collaboration_data(conn) -> dict[str, dict[str, int]]:
+    """Load collaboration data grouped by company.
+
+    Uses defaultdict to avoid repeated .setdefault()/.get() overhead.
+    """
+    rows = conn.execute("SELECT * FROM collaborations").fetchall()
+    result: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     for r in rows:
-        code = r["edinet_code"]
-        uni = r["university_name"]
-        cnt = r["count"]
-        result.setdefault(code, {})[uni] = result.get(code, {}).get(uni, 0) + cnt
+        result[r["edinet_code"]][r["university_name"]] += r["count"]
     return result
 
 
@@ -87,9 +90,11 @@ def run_match(seed: Seed, top_n: int | None = None) -> MatchResult:
     top_n = top_n or settings.default_top_n
     start = time.time()
 
-    companies = _load_companies()
-    industry_stats = _load_industry_stats()
-    collab_data = _load_collaboration_data()
+    # Consolidate into a single DB connection for all data loading
+    with connect(settings.matcher_db_path) as conn:
+        companies = _load_companies(conn)
+        industry_stats = _load_industry_stats(conn)
+        collab_data = _load_collaboration_data(conn)
 
     # Initialize scorers — weights managed here, not inside scorers
     tech_prox = TechProxScorer()

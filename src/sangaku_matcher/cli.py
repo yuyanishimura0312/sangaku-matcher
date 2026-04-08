@@ -94,23 +94,37 @@ def import_collabs(csv_path: str) -> None:
     from sangaku_matcher.db import connect
 
     count = 0
+    batch_size = 1000
     with connect(settings.matcher_db_path) as conn:
         with open(csv_path, encoding="utf-8") as f:
             reader = csv.DictReader(f)
+            batch: list[tuple] = []
             for row in reader:
-                conn.execute(
+                batch.append((
+                    row["edinet_code"],
+                    row["university_name"],
+                    row.get("type", "patent"),
+                    int(row.get("count", 1)),
+                    int(row["last_year"]) if row.get("last_year") else None,
+                ))
+                count += 1
+                # Flush in chunks of 1000 for better performance
+                if len(batch) >= batch_size:
+                    conn.executemany(
+                        """INSERT OR REPLACE INTO collaborations
+                           (edinet_code, university_name, type, count, last_year)
+                           VALUES (?, ?, ?, ?, ?)""",
+                        batch,
+                    )
+                    batch.clear()
+            # Flush remaining rows
+            if batch:
+                conn.executemany(
                     """INSERT OR REPLACE INTO collaborations
                        (edinet_code, university_name, type, count, last_year)
                        VALUES (?, ?, ?, ?, ?)""",
-                    (
-                        row["edinet_code"],
-                        row["university_name"],
-                        row.get("type", "patent"),
-                        int(row.get("count", 1)),
-                        int(row["last_year"]) if row.get("last_year") else None,
-                    ),
+                    batch,
                 )
-                count += 1
     click.echo(f"Imported {count} collaboration records.")
 
 
