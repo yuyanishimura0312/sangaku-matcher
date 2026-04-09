@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}推定ニーズ一覧 — sangaku-matcher{% endblock %}
+{% block content %}
+<h2>推定ニーズデータ ({{ total }}社)</h2>
+<p class="text-muted" style="font-size:0.85rem">企業の業種・R&D特性から推定された技術ニーズ。need_fitスコアのソースデータです。</p>
+
+<form method="get" class="row g-2 mb-3">
+    <div class="col-md-4">
+        <input type="text" class="form-control" name="q" value="{{ q }}" placeholder="企業名・ニーズキーワードで検索">
+    </div>
+    <div class="col-md-3">
+        <select class="form-select" name="industry">
+            <option value="">全業種</option>
+            {% for ind in industries %}
+            <option value="{{ ind }}" {{ "selected" if ind == industry else "" }}>{{ ind }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-2">
+        <select class="form-select" name="sort" aria-label="並び替え">
+            <option value="rd_expense" {{ "selected" if sort == "rd_expense" else "" }}>R&D費順</option>
+            <option value="name" {{ "selected" if sort == "name" else "" }}>企業名順</option>
+            <option value="rd_intensity" {{ "selected" if sort == "rd_intensity" else "" }}>R&D比率順</option>
+        </select>
+    </div>
+    <div class="col-md-2">
+        <button type="submit" class="btn btn-primary w-100">検索</button>
+    </div>
+</form>
+
+{# Stats bar #}
+<div class="d-flex gap-4 mb-3" style="font-size:0.82rem;color:var(--color-text-muted)">
+    <span>ニーズデータあり: <strong>{{ with_needs }}</strong>社</span>
+    <span>データなし: <strong>{{ total - with_needs }}</strong>社</span>
+</div>
+
+<div class="needs-list">
+    {% for co in companies %}
+    <div class="card mb-3">
+        <div class="card-body" style="padding:1rem 1.25rem">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <div>
+                    <a href="/company/{{ co.edinet_code }}" style="font-weight:600;font-size:0.95rem">{{ co.name }}</a>
+                    <span class="badge" style="background:var(--color-muted-bg);color:var(--color-text-muted);font-size:0.72rem;margin-left:0.5rem">{{ co.industry or "-" }}</span>
+                </div>
+                <div style="font-size:0.78rem;color:var(--color-text-subtle);text-align:right;white-space:nowrap">
+                    R&D {{ "{:,.0f}".format(co.rd_expense) if co.rd_expense else "-" }}M
+                    ({{ "{:.1%}".format(co.rd_intensity) if co.rd_intensity else "-" }})
+                </div>
+            </div>
+            {% if co.estimated_needs %}
+            <p style="font-size:0.82rem;color:var(--color-text);line-height:1.8;margin:0;background:var(--color-muted-bg);padding:0.75rem 1rem;border-radius:6px">
+                {{ co.estimated_needs }}
+            </p>
+            {% else %}
+            <p style="font-size:0.82rem;color:var(--color-text-subtle);margin:0;font-style:italic">推定ニーズデータなし</p>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if not companies %}
+<div class="empty-state">
+    <div class="empty-title">該当する企業がありません</div>
+    <div class="empty-desc">検索条件を変更してください。</div>
+</div>
+{% endif %}
+
+<nav aria-label="ページナビゲーション">
+    <ul class="pagination">
+        {% if page > 1 %}<li class="page-item"><a class="page-link" href="?q={{ q }}&industry={{ industry }}&sort={{ sort }}&page={{ page - 1 }}">前へ</a></li>{% endif %}
+        <li class="page-item disabled"><span class="page-link">{{ page }} / {{ total_pages }}</span></li>
+        {% if page < total_pages %}<li class="page-item"><a class="page-link" href="?q={{ q }}&industry={{ industry }}&sort={{ sort }}&page={{ page + 1 }}">次へ</a></li>{% endif %}
+    </ul>
+</nav>
+{% endblock %}

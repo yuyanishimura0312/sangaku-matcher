@@ -21,7 +21,8 @@
             <ul class="nav-links" role="list">
                 <li><a href="/" {% if request.url.path == "/" %}class="active" aria-current="page"{% endif %}>AI解析</a></li>
                 <li><a href="/results" {% if request.url.path == "/results" %}class="active" aria-current="page"{% endif %}>結果一覧</a></li>
-                <li><a href="/companies" {% if "/companies" in request.url.path %}class="active" aria-current="page"{% endif %}>企業一覧</a></li>
+                <li><a href="/companies" {% if "/companies" in request.url.path and "/needs" not in request.url.path %}class="active" aria-current="page"{% endif %}>企業一覧</a></li>
+                <li><a href="/needs" {% if "/needs" in request.url.path %}class="active" aria-current="page"{% endif %}>ニーズ一覧</a></li>
             </ul>
         </div>
     </nav>

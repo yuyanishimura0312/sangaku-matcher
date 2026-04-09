@@ -201,6 +201,56 @@ async def results_list(request: Request, page: int = 1):
     })
 
 
+@app.get("/needs", response_class=HTMLResponse)
+async def needs_page(
+    request: Request,
+    q: str = "",
+    industry: str = "",
+    sort: str = "rd_expense",
+    page: int = 1,
+):
+    per_page = 30
+    offset = (page - 1) * per_page
+    allowed_sorts = {"name", "rd_expense", "rd_intensity"}
+    if sort not in allowed_sorts:
+        sort = "rd_expense"
+    order_sql = "DESC" if sort != "name" else "ASC"
+
+    conditions = []
+    params: list = []
+    if q:
+        conditions.append("(name LIKE ? OR estimated_needs LIKE ?)")
+        params.extend([f"%{q}%", f"%{q}%"])
+    if industry:
+        conditions.append("industry = ?")
+        params.append(industry)
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    with connect(settings.matcher_db_path) as conn:
+        total = conn.execute(f"SELECT COUNT(*) as c FROM companies {where}", params).fetchone()["c"]
+        with_needs = conn.execute(
+            f"SELECT COUNT(*) as c FROM companies {where + (' AND ' if where else 'WHERE ') + 'estimated_needs IS NOT NULL AND LENGTH(estimated_needs) > 0'}",
+            params,
+        ).fetchone()["c"]
+        rows = conn.execute(
+            f"SELECT edinet_code, name, industry, rd_expense, rd_intensity, estimated_needs "
+            f"FROM companies {where} ORDER BY {sort} {order_sql} LIMIT ? OFFSET ?",
+            params + [per_page, offset],
+        ).fetchall()
+        industries = conn.execute(
+            "SELECT DISTINCT industry FROM companies WHERE industry IS NOT NULL ORDER BY industry"
+        ).fetchall()
+
+    total_pages = max(1, math.ceil(total / per_page))
+    return templates.TemplateResponse(request, "needs.html", {
+        "companies": rows, "industries": [r["industry"] for r in industries],
+        "q": q, "industry": industry, "sort": sort,
+        "page": page, "total_pages": total_pages, "total": total,
+        "with_needs": with_needs,
+    })
+
+
 @app.get("/companies", response_class=HTMLResponse)
 async def companies_page(
     request: Request,
