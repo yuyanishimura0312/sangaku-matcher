@@ -100,10 +100,11 @@ def main():
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
 
-    # Get companies with midterm_plan_text
+    # Get companies with midterm_plan_text but not yet v2 processed (needs <= 200 chars)
     sql = """SELECT edinet_code, name, industry, rd_expense, rd_intensity, revenue, midterm_plan_text
              FROM companies
              WHERE midterm_plan_text IS NOT NULL AND LENGTH(midterm_plan_text) > 100
+               AND (estimated_needs IS NULL OR LENGTH(estimated_needs) <= 200)
              ORDER BY rd_expense DESC"""
     if args.limit:
         sql += f" LIMIT {args.limit}"
