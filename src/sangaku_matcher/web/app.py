@@ -201,22 +201,56 @@ async def results_list(request: Request, page: int = 1):
     })
 
 
+import re as _re
+from collections import defaultdict as _defaultdict
+
+# Needs domain categories for grouping
+NEEDS_DOMAINS = {
+    "AI・データ": ["AI", "機械学習", "データ分析", "自然言語処理", "大規模言語モデル", "深層学習", "推論チップ", "エッジAI", "AI創薬", "AI画像", "需要予測", "最適化アルゴリズム", "パーソナライゼーション"],
+    "半導体・電子部品": ["半導体", "SiC", "GaN", "MEMS", "フォトニクス", "光半導体", "高周波", "パワー半導体", "センサ", "電子部品"],
+    "エネルギー・環境": ["電池", "蓄電", "水素", "カーボンニュートラル", "CO2", "省エネ", "エネルギー", "再生可能", "太陽光", "グリーン"],
+    "バイオ・ヘルスケア": ["バイオ", "医薬", "医療", "ヘルスケア", "iPS", "再生医療", "遺伝子", "抗体", "核酸", "ゲノム", "診断", "細胞"],
+    "モビリティ": ["自動運転", "電動化", "EV", "ADAS", "車載", "MaaS", "モビリティ", "FCEV", "BEV"],
+    "ロボティクス・製造": ["ロボティクス", "ロボット", "自動化", "3Dプリン", "AM技術", "スマートファクトリー", "FA", "加工", "製造DX"],
+    "素材・化学": ["材料", "触媒", "ポリマー", "ナノテク", "コーティング", "繊維", "セラミック", "金属", "高分子", "複合材"],
+    "通信・ネットワーク": ["5G", "6G", "通信", "IoT", "ネットワーク", "V2X", "コネクティッド", "ブロックチェーン"],
+    "DX・ソフトウェア": ["DX", "クラウド", "SaaS", "RPA", "業務自動化", "デジタル", "サイバーセキュリティ", "フィンテック"],
+    "建設・インフラ": ["BIM", "建設", "インフラ", "ZEB", "スマートシティ", "施工", "コンクリート", "防災", "レジリエンス"],
+    "食・農業": ["フードテック", "食品", "発酵", "農業", "代替タンパク", "鮮度"],
+}
+
+
+def _extract_domains(needs_text: str) -> list[str]:
+    """Extract matching needs domains from a needs text."""
+    if not needs_text:
+        return []
+    domains = []
+    for domain, keywords in NEEDS_DOMAINS.items():
+        for kw in keywords:
+            if kw in needs_text:
+                domains.append(domain)
+                break
+    return domains
+
+
 @app.get("/needs", response_class=HTMLResponse)
 async def needs_page(
     request: Request,
     q: str = "",
     industry: str = "",
+    domain: str = "",
     sort: str = "rd_expense",
+    view: str = "dashboard",
     page: int = 1,
 ):
-    per_page = 30
-    offset = (page - 1) * per_page
+    per_page = 30 if view == "list" else 500
+    offset = (page - 1) * per_page if view == "list" else 0
     allowed_sorts = {"name", "rd_expense", "rd_intensity"}
     if sort not in allowed_sorts:
         sort = "rd_expense"
     order_sql = "DESC" if sort != "name" else "ASC"
 
-    conditions = []
+    conditions = ["estimated_needs IS NOT NULL AND LENGTH(estimated_needs) > 0"]
     params: list = []
     if q:
         conditions.append("(name LIKE ? OR estimated_needs LIKE ?)")
@@ -224,30 +258,103 @@ async def needs_page(
     if industry:
         conditions.append("industry = ?")
         params.append(industry)
+    if domain and domain in NEEDS_DOMAINS:
+        # Filter by any keyword in the domain
+        kw_conditions = [f"estimated_needs LIKE ?" for _ in NEEDS_DOMAINS[domain][:5]]
+        conditions.append(f"({' OR '.join(kw_conditions)})")
+        params.extend([f"%{kw}%" for kw in NEEDS_DOMAINS[domain][:5]])
 
-    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    where = "WHERE " + " AND ".join(conditions)
 
     with connect(settings.matcher_db_path) as conn:
         total = conn.execute(f"SELECT COUNT(*) as c FROM companies {where}", params).fetchone()["c"]
+        total_all = conn.execute("SELECT COUNT(*) as c FROM companies").fetchone()["c"]
         with_needs = conn.execute(
-            f"SELECT COUNT(*) as c FROM companies {where + (' AND ' if where else 'WHERE ') + 'estimated_needs IS NOT NULL AND LENGTH(estimated_needs) > 0'}",
-            params,
+            "SELECT COUNT(*) as c FROM companies WHERE estimated_needs IS NOT NULL AND LENGTH(estimated_needs) > 0"
         ).fetchone()["c"]
+
         rows = conn.execute(
             f"SELECT edinet_code, name, industry, rd_expense, rd_intensity, estimated_needs "
             f"FROM companies {where} ORDER BY {sort} {order_sql} LIMIT ? OFFSET ?",
             params + [per_page, offset],
         ).fetchall()
-        industries = conn.execute(
+        industries_rows = conn.execute(
             "SELECT DISTINCT industry FROM companies WHERE industry IS NOT NULL ORDER BY industry"
         ).fetchall()
 
-    total_pages = max(1, math.ceil(total / per_page))
+        # Industry summary for grouped + dashboard views
+        industry_summary = []
+        if view in ("industry", "dashboard"):
+            industry_summary = conn.execute(
+                """SELECT industry, COUNT(*) as cnt, AVG(rd_expense) as avg_rd
+                   FROM companies
+                   WHERE estimated_needs IS NOT NULL AND LENGTH(estimated_needs) > 0
+                     AND industry IS NOT NULL AND industry != ''
+                   GROUP BY industry ORDER BY cnt DESC"""
+            ).fetchall()
+
+        # Collaboration stats for dashboard
+        collab_stats = None
+        collab_top = []
+        if view == "dashboard":
+            cs = conn.execute(
+                "SELECT COUNT(*) as total_records, COUNT(DISTINCT edinet_code) as companies_with FROM collaborations"
+            ).fetchone()
+            collab_stats = {"total_records": cs["total_records"], "companies_with": cs["companies_with"]}
+            collab_top_rows = conn.execute(
+                """SELECT c.edinet_code, c.name, c.industry, c.estimated_needs,
+                          COUNT(DISTINCT cl.university_name) as uni_count,
+                          SUM(cl.count) as total_papers
+                   FROM collaborations cl JOIN companies c ON cl.edinet_code = c.edinet_code
+                   GROUP BY cl.edinet_code ORDER BY total_papers DESC LIMIT 10"""
+            ).fetchall()
+            collab_top = []
+            for r in collab_top_rows:
+                ct = dict(r)
+                ct["domains"] = _extract_domains(ct.get("estimated_needs", ""))
+                collab_top.append(ct)
+
+    # Domain summary for domain + dashboard views
+    domain_summary = []
+    if view in ("domain", "dashboard"):
+        domain_counts: dict[str, int] = {}
+        with connect(settings.matcher_db_path) as conn:
+            all_needs = conn.execute(
+                "SELECT estimated_needs FROM companies WHERE estimated_needs IS NOT NULL"
+            ).fetchall()
+        for row in all_needs:
+            for d in _extract_domains(row["estimated_needs"]):
+                domain_counts[d] = domain_counts.get(d, 0) + 1
+        domain_summary = sorted(domain_counts.items(), key=lambda x: x[1], reverse=True)
+
+    # Attach domains to each company for display
+    companies_with_domains = []
+    for r in rows:
+        co = dict(r)
+        co["domains"] = _extract_domains(co.get("estimated_needs", ""))
+        companies_with_domains.append(co)
+
+    # Group companies by industry if view == "industry"
+    grouped_by_industry = {}
+    if view == "industry":
+        for co in companies_with_domains:
+            ind = co.get("industry") or "その他"
+            grouped_by_industry.setdefault(ind, []).append(co)
+
+    total_pages = max(1, math.ceil(total / per_page)) if view == "list" else 1
     return templates.TemplateResponse(request, "needs.html", {
-        "companies": rows, "industries": [r["industry"] for r in industries],
-        "q": q, "industry": industry, "sort": sort,
-        "page": page, "total_pages": total_pages, "total": total,
+        "companies": companies_with_domains,
+        "industries": [r["industry"] for r in industries_rows],
+        "q": q, "industry": industry, "domain": domain, "sort": sort, "view": view,
+        "page": page, "total_pages": total_pages, "total": total, "total_all": total_all,
         "with_needs": with_needs,
+        "industry_summary": industry_summary,
+        "domain_summary": domain_summary,
+        "grouped_by_industry": grouped_by_industry,
+        "all_domains": list(NEEDS_DOMAINS.keys()),
+        "all_domain_keywords": NEEDS_DOMAINS,
+        "collab_stats": collab_stats,
+        "collab_top": collab_top,
     })
 
 

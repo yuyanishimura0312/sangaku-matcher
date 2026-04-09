@@ -1,18 +1,186 @@
 {% extends "base.html" %}
-{% block title %}推定ニーズ一覧 — sangaku-matcher{% endblock %}
+{% block title %}ニーズデータベース — sangaku-matcher{% endblock %}
 {% block content %}
-<h2>推定ニーズデータ ({{ total }}社)</h2>
-<p class="text-muted" style="font-size:0.85rem">企業の業種・R&D特性から推定された技術ニーズ。need_fitスコアのソースデータです。</p>
+<h2>ニーズデータベース</h2>
+<p class="text-muted" style="font-size:0.85rem">企業の業種・R&D特性から推定された技術ニーズ。need_fitスコアのソースデータ。</p>
 
-<form method="get" class="row g-2 mb-3">
-    <div class="col-md-4">
-        <input type="text" class="form-control" name="q" value="{{ q }}" placeholder="企業名・ニーズキーワードで検索">
+{# ── View mode tabs ── #}
+<ul class="nav nav-tabs mb-3" role="tablist" style="border-bottom:2px solid var(--color-border)">
+    <li class="nav-item">
+        <a class="nav-link {% if view == 'dashboard' %}active{% endif %}" href="?view=dashboard&q={{ q }}&industry={{ industry }}&domain={{ domain }}" style="font-size:0.85rem;font-weight:600;color:var(--color-text){% if view == 'dashboard' %};border-bottom:2px solid var(--color-accent){% endif %}">ダッシュボード</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if view == 'industry' %}active{% endif %}" href="?view=industry&q={{ q }}&domain={{ domain }}" style="font-size:0.85rem;font-weight:600;color:var(--color-text){% if view == 'industry' %};border-bottom:2px solid var(--color-accent){% endif %}">業種別</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if view == 'domain' %}active{% endif %}" href="?view=domain&q={{ q }}&industry={{ industry }}" style="font-size:0.85rem;font-weight:600;color:var(--color-text){% if view == 'domain' %};border-bottom:2px solid var(--color-accent){% endif %}">ニーズ領域別</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if view == 'list' %}active{% endif %}" href="?view=list&q={{ q }}&industry={{ industry }}&domain={{ domain }}&sort={{ sort }}" style="font-size:0.85rem;font-weight:600;color:var(--color-text){% if view == 'list' %};border-bottom:2px solid var(--color-accent){% endif %}">一覧</a>
+    </li>
+</ul>
+
+{# ══════════════════ DASHBOARD VIEW ══════════════════ #}
+{% if view == 'dashboard' %}
+<div class="row mb-4">
+    {# KPI cards #}
+    <div class="col-md-3 mb-3">
+        <div class="card h-100"><div class="card-body text-center">
+            <div class="stat-number">{{ with_needs }}</div>
+            <div class="stat-label">ニーズデータ保有企業</div>
+            <div style="font-size:0.72rem;color:var(--color-text-subtle)">/ {{ total_all }}社</div>
+        </div></div>
     </div>
+    <div class="col-md-3 mb-3">
+        <div class="card h-100"><div class="card-body text-center">
+            <div class="stat-number">{{ domain_summary|length }}</div>
+            <div class="stat-label">ニーズ領域カテゴリ</div>
+        </div></div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card h-100"><div class="card-body text-center">
+            <div class="stat-number">{{ industry_summary|length }}</div>
+            <div class="stat-label">業種カテゴリ</div>
+        </div></div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card h-100"><div class="card-body text-center">
+            <div class="stat-number">{{ collab_stats.total_records if collab_stats else 0 }}</div>
+            <div class="stat-label">産学連携レコード</div>
+            <div style="font-size:0.72rem;color:var(--color-text-subtle)">{{ collab_stats.companies_with if collab_stats else 0 }}社</div>
+        </div></div>
+    </div>
+</div>
+
+{# Domain distribution chart #}
+<div class="row mb-4">
+    <div class="col-md-7">
+        <div class="card">
+            <div class="card-header">ニーズ領域別 企業数</div>
+            <div class="card-body" style="padding:1rem">
+                {% for d_name, d_count in domain_summary %}
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <a href="?view=list&domain={{ d_name }}" style="font-size:0.82rem;width:10rem;flex-shrink:0;text-decoration:none;color:var(--color-text)">{{ d_name }}</a>
+                    <div class="score-bar" style="flex:1"><div class="score-bar-fill" style="width:{{ (d_count / with_needs * 100)|int }}%"></div></div>
+                    <span style="font-size:0.82rem;font-weight:600;width:3rem;text-align:right">{{ d_count }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-5">
+        <div class="card">
+            <div class="card-header">業種別 企業数 TOP10</div>
+            <div class="card-body" style="padding:1rem">
+                {% for ind in industry_summary[:10] %}
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <a href="?view=list&industry={{ ind.industry }}" style="font-size:0.82rem;width:8rem;flex-shrink:0;text-decoration:none;color:var(--color-text)">{{ ind.industry }}</a>
+                    <div class="score-bar" style="flex:1"><div class="score-bar-fill" style="width:{{ (ind.cnt / with_needs * 100)|int }}%"></div></div>
+                    <span style="font-size:0.82rem;font-weight:600;width:3rem;text-align:right">{{ ind.cnt }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{# Collaboration insights #}
+{% if collab_top %}
+<div class="card mb-4">
+    <div class="card-header">産学連携が活発な企業 TOP10</div>
+    <div class="card-body" style="padding:0">
+        <table class="table table-striped mb-0" style="font-size:0.85rem">
+            <thead><tr><th>企業名</th><th>業種</th><th>連携大学数</th><th>論文数</th><th>主なニーズ領域</th></tr></thead>
+            <tbody>
+            {% for ct in collab_top %}
+            <tr>
+                <td><a href="/company/{{ ct.edinet_code }}">{{ ct.name }}</a></td>
+                <td>{{ ct.industry or "-" }}</td>
+                <td class="text-end">{{ ct.uni_count }}</td>
+                <td class="text-end">{{ "{:,}".format(ct.total_papers) }}</td>
+                <td>{% for d in ct.domains[:3] %}<span class="badge" style="background:var(--color-accent-light);color:var(--color-accent-dark);font-size:0.7rem;margin-right:0.25rem">{{ d }}</span>{% endfor %}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{# ══════════════════ INDUSTRY VIEW ══════════════════ #}
+{% elif view == 'industry' %}
+<div class="mb-3" style="font-size:0.85rem;color:var(--color-text-muted)">{{ industry_summary|length }}業種 / {{ with_needs }}社のニーズデータ</div>
+
+{% for ind in industry_summary %}
+<div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer" onclick="this.nextElementSibling.classList.toggle('d-none')">
+        <span>
+            <strong>{{ ind.industry }}</strong>
+            <span class="badge" style="background:var(--color-accent);color:#fff;margin-left:0.5rem">{{ ind.cnt }}社</span>
+        </span>
+        <span style="font-size:0.78rem;color:var(--color-text-subtle)">平均R&D費 {{ "{:,.0f}".format(ind.avg_rd) }}百万円</span>
+    </div>
+    <div class="card-body d-none" style="padding:0.75rem 1rem">
+        {% for co in grouped_by_industry.get(ind.industry, [])[:10] %}
+        <div class="d-flex justify-content-between align-items-start py-2" style="border-bottom:1px solid var(--color-border)">
+            <div style="flex:1">
+                <a href="/company/{{ co.edinet_code }}" style="font-size:0.85rem;font-weight:500">{{ co.name }}</a>
+                {% for d in co.domains[:3] %}<span class="badge" style="background:var(--color-accent-light);color:var(--color-accent-dark);font-size:0.68rem;margin-left:0.25rem">{{ d }}</span>{% endfor %}
+            </div>
+            <span style="font-size:0.78rem;color:var(--color-text-subtle);white-space:nowrap">R&D {{ "{:,.0f}".format(co.rd_expense) if co.rd_expense else "-" }}M</span>
+        </div>
+        {% endfor %}
+        {% if grouped_by_industry.get(ind.industry, [])|length > 10 %}
+        <div style="padding:0.5rem 0;font-size:0.78rem;color:var(--color-text-subtle)">
+            <a href="?view=list&industry={{ ind.industry }}">...他 {{ grouped_by_industry[ind.industry]|length - 10 }}社を表示</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+
+{# ══════════════════ DOMAIN VIEW ══════════════════ #}
+{% elif view == 'domain' %}
+<div class="mb-3" style="font-size:0.85rem;color:var(--color-text-muted)">{{ domain_summary|length }}ニーズ領域カテゴリ</div>
+
+{% for d_name, d_count in domain_summary %}
+<div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer" onclick="this.nextElementSibling.classList.toggle('d-none')">
+        <span>
+            <strong>{{ d_name }}</strong>
+            <span class="badge" style="background:var(--color-accent);color:#fff;margin-left:0.5rem">{{ d_count }}社</span>
+        </span>
+        <span style="font-size:0.78rem;color:var(--color-text-subtle)">{{ (d_count / with_needs * 100)|round(1) }}%</span>
+    </div>
+    <div class="card-body d-none" style="padding:0.75rem 1rem">
+        <a href="?view=list&domain={{ d_name }}" class="btn btn-outline-secondary btn-sm mb-2">この領域の企業一覧を表示</a>
+        <div style="font-size:0.78rem;color:var(--color-text-subtle)">
+            関連キーワード: {{ ", ".join(all_domain_keywords.get(d_name, [])[:8]) }}
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+{# ══════════════════ LIST VIEW ══════════════════ #}
+{% elif view == 'list' %}
+<form method="get" class="row g-2 mb-3">
+    <input type="hidden" name="view" value="list">
     <div class="col-md-3">
+        <input type="text" class="form-control" name="q" value="{{ q }}" placeholder="企業名・キーワード検索">
+    </div>
+    <div class="col-md-2">
         <select class="form-select" name="industry">
             <option value="">全業種</option>
             {% for ind in industries %}
             <option value="{{ ind }}" {{ "selected" if ind == industry else "" }}>{{ ind }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-2">
+        <select class="form-select" name="domain">
+            <option value="">全ニーズ領域</option>
+            {% for d in all_domains %}
+            <option value="{{ d }}" {{ "selected" if d == domain else "" }}>{{ d }}</option>
             {% endfor %}
         </select>
     </div>
@@ -28,37 +196,33 @@
     </div>
 </form>
 
-{# Stats bar #}
-<div class="d-flex gap-4 mb-3" style="font-size:0.82rem;color:var(--color-text-muted)">
-    <span>ニーズデータあり: <strong>{{ with_needs }}</strong>社</span>
-    <span>データなし: <strong>{{ total - with_needs }}</strong>社</span>
+<div class="mb-3" style="font-size:0.82rem;color:var(--color-text-muted)">
+    {{ total }}社{% if domain %} ({{ domain }}){% endif %}{% if industry %} / {{ industry }}{% endif %}
 </div>
 
-<div class="needs-list">
-    {% for co in companies %}
-    <div class="card mb-3">
-        <div class="card-body" style="padding:1rem 1.25rem">
-            <div class="d-flex justify-content-between align-items-start mb-2">
-                <div>
-                    <a href="/company/{{ co.edinet_code }}" style="font-weight:600;font-size:0.95rem">{{ co.name }}</a>
-                    <span class="badge" style="background:var(--color-muted-bg);color:var(--color-text-muted);font-size:0.72rem;margin-left:0.5rem">{{ co.industry or "-" }}</span>
-                </div>
-                <div style="font-size:0.78rem;color:var(--color-text-subtle);text-align:right;white-space:nowrap">
-                    R&D {{ "{:,.0f}".format(co.rd_expense) if co.rd_expense else "-" }}M
-                    ({{ "{:.1%}".format(co.rd_intensity) if co.rd_intensity else "-" }})
-                </div>
+{% for co in companies %}
+<div class="card mb-2">
+    <div class="card-body" style="padding:0.75rem 1rem">
+        <div class="d-flex justify-content-between align-items-start mb-1">
+            <div>
+                <a href="/company/{{ co.edinet_code }}" style="font-weight:600;font-size:0.9rem">{{ co.name }}</a>
+                <span class="badge" style="background:var(--color-muted-bg);color:var(--color-text-muted);font-size:0.7rem;margin-left:0.5rem">{{ co.industry or "-" }}</span>
+                {% for d in co.domains %}
+                <span class="badge" style="background:var(--color-accent-light);color:var(--color-accent-dark);font-size:0.68rem;margin-left:0.15rem">{{ d }}</span>
+                {% endfor %}
             </div>
-            {% if co.estimated_needs %}
-            <p style="font-size:0.82rem;color:var(--color-text);line-height:1.8;margin:0;background:var(--color-muted-bg);padding:0.75rem 1rem;border-radius:6px">
-                {{ co.estimated_needs }}
-            </p>
-            {% else %}
-            <p style="font-size:0.82rem;color:var(--color-text-subtle);margin:0;font-style:italic">推定ニーズデータなし</p>
-            {% endif %}
+            <div style="font-size:0.75rem;color:var(--color-text-subtle);white-space:nowrap">
+                R&D {{ "{:,.0f}".format(co.rd_expense) if co.rd_expense else "-" }}M ({{ "{:.1%}".format(co.rd_intensity) if co.rd_intensity else "-" }})
+            </div>
         </div>
+        {% if co.estimated_needs %}
+        <p style="font-size:0.78rem;color:var(--color-text-muted);line-height:1.7;margin:0;background:var(--color-muted-bg);padding:0.5rem 0.75rem;border-radius:4px">
+            {{ co.estimated_needs }}
+        </p>
+        {% endif %}
     </div>
-    {% endfor %}
 </div>
+{% endfor %}
 
 {% if not companies %}
 <div class="empty-state">
@@ -69,9 +233,11 @@
 
 <nav aria-label="ページナビゲーション">
     <ul class="pagination">
-        {% if page > 1 %}<li class="page-item"><a class="page-link" href="?q={{ q }}&industry={{ industry }}&sort={{ sort }}&page={{ page - 1 }}">前へ</a></li>{% endif %}
+        {% if page > 1 %}<li class="page-item"><a class="page-link" href="?view=list&q={{ q }}&industry={{ industry }}&domain={{ domain }}&sort={{ sort }}&page={{ page - 1 }}">前へ</a></li>{% endif %}
         <li class="page-item disabled"><span class="page-link">{{ page }} / {{ total_pages }}</span></li>
-        {% if page < total_pages %}<li class="page-item"><a class="page-link" href="?q={{ q }}&industry={{ industry }}&sort={{ sort }}&page={{ page + 1 }}">次へ</a></li>{% endif %}
+        {% if page < total_pages %}<li class="page-item"><a class="page-link" href="?view=list&q={{ q }}&industry={{ industry }}&domain={{ domain }}&sort={{ sort }}&page={{ page + 1 }}">次へ</a></li>{% endif %}
     </ul>
 </nav>
+{% endif %}
+
 {% endblock %}
