@@ -358,6 +358,16 @@ async def needs_page(
     })
 
 
+@app.get("/needs/about", response_class=HTMLResponse)
+async def needs_about(request: Request):
+    with connect(settings.matcher_db_path) as conn:
+        company_count = conn.execute("SELECT COUNT(*) as c FROM companies").fetchone()["c"]
+    return templates.TemplateResponse(request, "needs_about.html", {
+        "company_count": company_count,
+        "domain_keywords": NEEDS_DOMAINS,
+    })
+
+
 @app.get("/companies", response_class=HTMLResponse)
 async def companies_page(
     request: Request,

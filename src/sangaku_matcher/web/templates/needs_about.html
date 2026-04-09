@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}ニーズデータ生成プロセス — sangaku-matcher{% endblock %}
+{% block content %}
+<div style="max-width:820px;margin:0 auto">
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 style="margin-bottom:0">ニーズデータ生成プロセス</h2>
+    <a href="/needs" class="btn btn-outline-secondary btn-sm">ニーズ一覧に戻る</a>
+</div>
+<p class="text-muted" style="font-size:0.85rem">本ページは、推定ニーズデータがどのように生成されたかを記録し、将来のアップデート時の参照資料として機能します。</p>
+
+{# ── Overview ── #}
+<div class="card mb-4">
+    <div class="card-header">概要</div>
+    <div class="card-body" style="font-size:0.88rem;line-height:1.9">
+        <p>sangaku-matcherの <code>need_fit</code> スコアラーは、企業の推定技術ニーズと入力シーズの意味的類似度を算出します。推定ニーズは「ニーズテキスト」と「ニーズベクトル（384次元）」のペアで構成され、以下のプロセスで生成されています。</p>
+        <div class="d-flex gap-2 flex-wrap mt-3">
+            <span class="badge" style="background:var(--color-accent);color:#fff;font-size:0.78rem;padding:0.4em 0.8em">現行バージョン: v1（テンプレートベース）</span>
+            <span class="badge" style="background:var(--color-muted-bg);color:var(--color-text-muted);font-size:0.78rem;padding:0.4em 0.8em">対象: {{ company_count }}社</span>
+            <span class="badge" style="background:var(--color-muted-bg);color:var(--color-text-muted);font-size:0.78rem;padding:0.4em 0.8em">カバレッジ: 100%</span>
+            <span class="badge" style="background:var(--color-muted-bg);color:var(--color-text-muted);font-size:0.78rem;padding:0.4em 0.8em">ベクトル: multilingual-e5-small (384d)</span>
+        </div>
+    </div>
+</div>
+
+{# ── Generation Logic ── #}
+<div class="card mb-4">
+    <div class="card-header">生成ロジック（v1）</div>
+    <div class="card-body" style="font-size:0.88rem;line-height:1.9">
+        <p>各企業のニーズテキストは、3つの要素を組み合わせて自動生成されます。</p>
+
+        <h5 style="font-size:0.9rem;font-weight:600;margin-top:1.25rem">1. 業種テンプレート</h5>
+        <p>主要業種ごとに、その業種に典型的な技術ニーズのキーワードリストを定義しています。業種が一致する企業には同一のキーワード群が割り当てられます。</p>
+
+        <h5 style="font-size:0.9rem;font-weight:600;margin-top:1.25rem">2. R&D特性修飾</h5>
+        <p>R&D投資比率（rd_intensity）に応じて3段階の文脈テキストを付与します。</p>
+        <table class="table" style="font-size:0.82rem">
+            <thead><tr><th>R&D比率</th><th>修飾テキスト</th></tr></thead>
+            <tbody>
+                <tr><td>> 5%</td><td>先端技術の外部導入に積極的</td></tr>
+                <tr><td>> 2%</td><td>技術課題の解決パートナーを求めている</td></tr>
+                <tr><td>その他</td><td>外部技術による事業革新を模索している</td></tr>
+            </tbody>
+        </table>
+
+        <h5 style="font-size:0.9rem;font-weight:600;margin-top:1.25rem">3. 規模修飾</h5>
+        <p>売上高に応じて連携の受入体制に関する文脈を付与します。</p>
+        <table class="table" style="font-size:0.82rem">
+            <thead><tr><th>売上高</th><th>修飾テキスト</th></tr></thead>
+            <tbody>
+                <tr><td>> 1兆円</td><td>大手企業として、大規模な共同研究や技術ライセンスの受入体制がある</td></tr>
+                <tr><td>> 1000億円</td><td>中堅〜大手として、特定領域の技術パートナーシップを重視</td></tr>
+                <tr><td>その他</td><td>成長企業として、大学発技術のスピーディーな事業化に関心</td></tr>
+            </tbody>
+        </table>
+
+        <h5 style="font-size:0.9rem;font-weight:600;margin-top:1.25rem">4. ベクトル化</h5>
+        <p>生成されたテキストを <code>intfloat/multilingual-e5-small</code>（384次元多言語モデル）でエンコードし、<code>needs_vector</code> として保存します。マッチング時にはこのベクトルと入力シーズのベクトルのコサイン類似度が <code>need_fit</code> スコアとなります。</p>
+
+        <div style="background:var(--color-muted-bg);padding:0.75rem 1rem;border-radius:6px;font-size:0.82rem;margin-top:1rem;font-family:monospace">
+            {企業名}の推定技術ニーズ。{R&D特性修飾}。{規模修飾}。求める技術領域: {業種テンプレート}
+        </div>
+    </div>
+</div>
+
+{# ── Industry Templates ── #}
+<div class="card mb-4">
+    <div class="card-header">業種別ニーズテンプレート</div>
+    <div class="card-body" style="padding:0">
+        <table class="table mb-0" style="font-size:0.82rem">
+            <thead><tr><th style="width:8rem">業種</th><th>主要ニーズキーワード</th></tr></thead>
+            <tbody>
+                <tr><td>情報・通信業</td><td>AI・機械学習、サイバーセキュリティ、クラウドネイティブ、自然言語処理、IoT、量子コンピューティング、プライバシー保護技術</td></tr>
+                <tr><td>電気機器</td><td>パワー半導体・SiC/GaN素子、次世代ディスプレイ、センサーフュージョン・LiDAR、ロボティクス、全固体電池、6G通信、光半導体</td></tr>
+                <tr><td>化学</td><td>機能性材料、触媒技術、バイオプラスチック、電池材料、半導体プロセス材料、マテリアルズインフォマティクス、CO2固定・回収</td></tr>
+                <tr><td>医薬品</td><td>抗体薬物複合体(ADC)、核酸医薬・mRNA、細胞治療・遺伝子治療、AI創薬、バイオマーカー、再生医療・iPS、デジタルセラピューティクス</td></tr>
+                <tr><td>機械</td><td>スマートファクトリー・Industry 4.0、予知保全・デジタルツイン、産業用ロボット、3Dプリンティング、水素関連機器、精密加工</td></tr>
+                <tr><td>輸送用機器</td><td>電動化(BEV/PHEV/FCEV)、自動運転・ADAS、車載半導体・車載OS、軽量化材料・CFRP、コネクティッドカー、全固体電池</td></tr>
+                <tr><td>食料品</td><td>フードテック・代替タンパク質、食品保存技術、発酵・バイオテクノロジー、健康機能性食品、スマート農業連携</td></tr>
+                <tr><td>建設業</td><td>BIM/CIM・建設DX、ロボット施工、ZEB/ZEH・省エネ建築、インフラモニタリング、スマートシティ基盤</td></tr>
+                <tr><td>小売業</td><td>EC・オムニチャネル、需要予測・在庫最適化AI、店舗DX、サプライチェーン最適化、決済テクノロジー</td></tr>
+                <tr><td>卸売業</td><td>サプライチェーンマネジメント高度化、貿易・物流DX、B2Bマーケットプレイス、倉庫自動化・ロボティクス</td></tr>
+                <tr><td>サービス業</td><td>顧客行動分析、業務自動化・RPA、需要予測、ヘルスケアテクノロジー、人材マッチング・HR Tech、教育テクノロジー</td></tr>
+                <tr style="background:var(--color-muted-bg)"><td>その他（デフォルト）</td><td>DX推進・業務デジタル化、データ分析・AI活用、サステナビリティ・環境対応技術、新規事業開発支援、省エネルギー対応</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{# ── Domain Categories ── #}
+<div class="card mb-4">
+    <div class="card-header">ニーズ領域カテゴリ（11カテゴリ）</div>
+    <div class="card-body" style="font-size:0.88rem;line-height:1.9">
+        <p>ニーズテキスト内のキーワードマッチングにより、以下の11カテゴリに自動タグ付けされます。ダッシュボードのグルーピングとフィルタリングに使用されます。</p>
+        <div class="row">
+            {% for d_name, d_keywords in domain_keywords.items() %}
+            <div class="col-md-6 mb-2">
+                <div style="background:var(--color-muted-bg);padding:0.5rem 0.75rem;border-radius:6px">
+                    <strong style="font-size:0.85rem">{{ d_name }}</strong>
+                    <div style="font-size:0.75rem;color:var(--color-text-subtle);margin-top:0.25rem">{{ d_keywords[:6]|join(", ") }}{% if d_keywords|length > 6 %} ...{% endif %}</div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+{# ── Limitations & Roadmap ── #}
+<div class="card mb-4">
+    <div class="card-header">制約と改善ロードマップ</div>
+    <div class="card-body" style="font-size:0.88rem;line-height:1.9">
+        <h5 style="font-size:0.9rem;font-weight:600;color:var(--color-danger)">現行版（v1）の制約</h5>
+        <ul style="font-size:0.85rem">
+            <li><strong>業種単位のテンプレート:</strong> 同一業種内の企業は同じニーズキーワードを持ち、個社ごとの差別化がされていない</li>
+            <li><strong>R&D実態の未反映:</strong> 有価証券報告書の研究開発活動セクションのテキストは未活用</li>
+            <li><strong>中期計画の未反映:</strong> 中期経営計画テキスト（新規事業領域への言及）は未取得</li>
+        </ul>
+
+        <h5 style="font-size:0.9rem;font-weight:600;color:var(--color-accent);margin-top:1.25rem">v2: EDINET + LLM推定（計画中）</h5>
+        <p style="font-size:0.85rem">EDINET API v2から有報の「経営方針、経営環境及び対処すべき課題等」セクションを取得し、Claude APIで新規事業領域・求める技術領域・投資予算規模を構造化抽出。個社別のニーズテキストを生成する。</p>
+
+        <h5 style="font-size:0.9rem;font-weight:600;color:var(--color-text-subtle);margin-top:1.25rem">v3: マルチソース統合（将来構想）</h5>
+        <p style="font-size:0.85rem">特許出願パターン分析（Google Patents BigQuery）、産学連携ニュース・プレスリリース解析、マッチング結果へのユーザーフィードバック学習を統合し、リアルタイムのニーズ変化を検出する。</p>
+    </div>
+</div>
+
+{# ── Scoring Integration ── #}
+<div class="card mb-4">
+    <div class="card-header">マッチングスコアへの組み込み</div>
+    <div class="card-body" style="font-size:0.88rem;line-height:1.9">
+        <p>推定ニーズデータは、五層価値モデルの <strong>第1層：技術的価値（need_fit）</strong>として、重み0.20で総合スコアに反映されます。</p>
+        <table class="table" style="font-size:0.82rem">
+            <thead><tr><th>スコアラー</th><th>層</th><th>重み</th><th>算出方法</th></tr></thead>
+            <tbody>
+                <tr><td>tech_prox</td><td>L1 技術</td><td>0.25</td><td>R&Dベクトルとの逆U字類似度</td></tr>
+                <tr style="background:var(--color-accent-light)"><td><strong>need_fit</strong></td><td><strong>L1 技術</strong></td><td><strong>0.20</strong></td><td><strong>ニーズベクトルとの線形類似度</strong></td></tr>
+                <tr><td>abs_cap</td><td>L3 知識</td><td>0.20</td><td>R&D投資 + 認知的近接性</td></tr>
+                <tr><td>open_inno</td><td>L5 生態系</td><td>0.15</td><td>OI成熟度 + 連携幅 + ハブ度</td></tr>
+                <tr><td>past_ties</td><td>L2 関係</td><td>0.10</td><td>連携量 + 多様性 + 最新度</td></tr>
+                <tr><td>future_option</td><td>L4 将来</td><td>0.10</td><td>R&D幅 + 探索距離 + 柔軟性</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{# ── Update History ── #}
+<div class="card mb-4">
+    <div class="card-header">更新履歴</div>
+    <div class="card-body" style="font-size:0.85rem">
+        <div class="d-flex gap-3 align-items-start">
+            <span style="font-weight:600;white-space:nowrap">2026-04-10</span>
+            <span>v1リリース。テンプレートベースの初期生成。{{ company_count }}社全社にニーズデータを付与。CiNii Researchから産学連携実績データを収集（1,866件）。</span>
+        </div>
+    </div>
+</div>
+
+</div>
+{% endblock %}
