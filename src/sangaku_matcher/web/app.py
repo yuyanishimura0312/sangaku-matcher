@@ -50,6 +50,9 @@ async def match(
     from sangaku_matcher.seeds import parse_seed
     from sangaku_matcher.matcher import run_match
 
+    # Clamp top_n to a safe range to prevent excessive queries or zero-result runs
+    top_n = max(1, min(top_n, 50))
+
     try:
         seed = parse_seed(
             description=description,
@@ -266,11 +269,32 @@ async def api_match(payload: dict):
     from sangaku_matcher.matcher import run_match
     from sangaku_matcher.reporter import to_json
 
-    seed = parse_seed(
-        description=payload.get("description", ""),
-        title=payload.get("title", ""),
-        doi=payload.get("doi"),
-        patent_no=payload.get("patent_no"),
-    )
-    result = run_match(seed, top_n=payload.get("top_n", 10))
+    # Validate required field
+    description = payload.get("description", "")
+    if not description or not description.strip():
+        return JSONResponse(
+            {"error": "description is required and must not be empty"},
+            status_code=400,
+        )
+
+    # Clamp top_n to a safe range (same rule as HTML endpoint)
+    top_n = int(payload.get("top_n", 10))
+    top_n = max(1, min(top_n, 50))
+
+    try:
+        seed = parse_seed(
+            description=description,
+            title=payload.get("title", ""),
+            doi=payload.get("doi"),
+            patent_no=payload.get("patent_no"),
+        )
+        result = run_match(seed, top_n=top_n)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=422)
+    except Exception:
+        return JSONResponse(
+            {"error": "マッチング処理中にエラーが発生しました。入力内容を確認してください。"},
+            status_code=500,
+        )
+
     return to_json(result)
