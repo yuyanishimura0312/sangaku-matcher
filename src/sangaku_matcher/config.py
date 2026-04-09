@@ -37,13 +37,13 @@ class Settings(BaseSettings):
     # --- Embedding Model ---
     embedding_model: str = "intfloat/multilingual-e5-small"
 
-    # --- Scoring Weights (Phase 1: 3 features) ---
-    w_tech_prox: float = 0.35
-    w_abs_cap: float = 0.35
-    w_past_ties: float = 0.30
-    w_need_fit: float = 0.00
-    w_trl_compat: float = 0.00
-    w_open_inno: float = 0.00
+    # --- Scoring Weights (Five-Layer Value Model: 6 features) ---
+    w_tech_prox: float = 0.25       # Layer 1: Technical Value
+    w_need_fit: float = 0.20        # Layer 1: Technical Value (need-pull)
+    w_abs_cap: float = 0.20         # Layer 3: Knowledge Value
+    w_open_inno: float = 0.15       # Layer 5: Ecosystem Value
+    w_past_ties: float = 0.10       # Layer 2: Relational Value
+    w_future_option: float = 0.10   # Layer 4: Future Value
 
     # --- Matching ---
     default_top_n: int = 10

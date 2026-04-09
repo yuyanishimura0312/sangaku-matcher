@@ -110,9 +110,19 @@ def _load_match_result(seed_id: str):
     rankings = []
     for r in match_rows:
         fs = {}
-        for k in ("tech_prox", "abs_cap", "past_ties"):
-            if r[k] is not None:
-                fs[k] = FeatureResult(r[k], r.get("rationale") or "")
+        # Map DB columns to scorer names (trl_compat stores future_option)
+        col_to_scorer = {
+            "tech_prox": "tech_prox",
+            "need_fit": "need_fit",
+            "abs_cap": "abs_cap",
+            "past_ties": "past_ties",
+            "trl_compat": "future_option",
+            "open_inno_mat": "open_inno",
+        }
+        for col, scorer_name in col_to_scorer.items():
+            val = r.get(col)
+            if val is not None:
+                fs[scorer_name] = FeatureResult(val, "")
         mode = r["recommended_mode"] or "joint_research"
         hypotheses, overall_comment = _generate_hypotheses(
             seed, r["name"], r["industry"] or "",

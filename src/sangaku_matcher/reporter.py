@@ -10,8 +10,17 @@ from sangaku_matcher.matcher import MatchResult
 MODE_LABELS = {
     "joint_research": "共同研究",
     "license": "ライセンス",
-    "contract": "受託開発",
-    "long_term": "中長期研究契約",
+    "contract": "受託研究",
+    "long_term": "中長期探索型連携",
+}
+
+FEATURE_LABELS = {
+    "tech_prox": ("技術近接", 0.25),
+    "need_fit": ("ニーズ適合", 0.20),
+    "abs_cap": ("知識吸収", 0.20),
+    "past_ties": ("関係資本", 0.10),
+    "future_option": ("将来価値", 0.10),
+    "open_inno": ("エコシステム", 0.15),
 }
 
 
@@ -23,7 +32,7 @@ def to_markdown(result: MatchResult) -> str:
         f"実行日時: {result.executed_at}",
         f"処理時間: {result.duration_sec}秒",
         f"対象企業: {result.company_count}社",
-        f"スコアリング: TechProx(0.35) + AbsCap(0.35) + PastTies(0.30)",
+        f"スコアリング: 五層価値モデル（技術0.25 + ニーズ0.20 + 知識0.20 + OI 0.15 + 関係0.10 + 将来0.10）",
         "",
         "---",
         "",
@@ -37,21 +46,19 @@ def to_markdown(result: MatchResult) -> str:
         "",
         "## ランキング",
         "",
-        "| # | 企業名 | 業種 | 総合 | 技術 | 吸収 | 実績 |",
-        "|---|--------|------|------|------|------|------|",
+        "| # | 企業名 | 業種 | 総合 | 技術 | ニーズ | 知識 | 関係 | 将来 | OI |",
+        "|---|--------|------|------|------|--------|------|------|------|-----|",
     ]
 
     for rc in result.rankings:
         fs = rc.feature_scores
-        tp = fs.get("tech_prox")
-        ac = fs.get("abs_cap")
-        pt = fs.get("past_ties")
-        tp_str = f"{tp.value:.2f}" if tp else "-"
-        ac_str = f"{ac.value:.2f}" if ac else "-"
-        pt_str = f"{pt.value:.2f}" if pt else "-"
+        vals = []
+        for k in ("tech_prox", "need_fit", "abs_cap", "past_ties", "future_option", "open_inno"):
+            f = fs.get(k)
+            vals.append(f"{f.value:.2f}" if f else "-")
         lines.append(
             f"| {rc.rank} | {rc.company_name} | {rc.industry} | "
-            f"{rc.total_score:.2f} | {tp_str} | {ac_str} | {pt_str} |"
+            f"{rc.total_score:.2f} | {' | '.join(vals)} |"
         )
 
     lines.append("")
@@ -69,8 +76,8 @@ def to_markdown(result: MatchResult) -> str:
         lines.append("| 特徴量 | スコア | 重み |")
         lines.append("|--------|--------|------|")
         for fname, fr in rc.feature_scores.items():
-            w = {"tech_prox": 0.35, "abs_cap": 0.35, "past_ties": 0.30}.get(fname, 0)
-            lines.append(f"| {fname} | {fr.value:.4f} | {w:.2f} |")
+            label, w = FEATURE_LABELS.get(fname, (fname, 0))
+            lines.append(f"| {label} | {fr.value:.4f} | {w:.2f} |")
 
         lines.append("")
         lines.append("**各観点の評価**:")

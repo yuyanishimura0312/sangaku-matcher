@@ -13,6 +13,7 @@ import math
 
 import numpy as np
 
+from sangaku_matcher.embeddings import cosine_similarity
 from sangaku_matcher.scoring import FeatureResult
 
 
@@ -54,13 +55,23 @@ class AbsCapScorer:
         # Normalize: 6 → 0.0, 12 → 1.0
         magnitude_score = max(0.0, min(1.0, (log_rd - 6.0) / 6.0))
 
-        # Combined score (equal weight for now)
-        combined = 0.5 * intensity_score + 0.5 * magnitude_score
+        # Cognitive proximity: can this company absorb THIS seed's technology?
+        # Zahra & George (2002): potential vs. realized absorptive capacity
+        cog_prox = 0.0
+        rd_vec_bytes = company.get("rd_text_vector")
+        if rd_vec_bytes and len(rd_vec_bytes) > 0:
+            rd_vec = np.frombuffer(rd_vec_bytes, dtype=np.float32)
+            cog_prox = cosine_similarity(seed_vector, rd_vec)
+            cog_prox = max(0.0, min(1.0, cog_prox))
+
+        # Combined: financial capacity (70%) + cognitive proximity (30%)
+        combined = 0.4 * intensity_score + 0.3 * magnitude_score + 0.3 * cog_prox
 
         rationale = (
-            f"R&D intensity {rd_intensity:.1%} "
-            f"({'above' if z_score > 0 else 'below'} industry avg), "
-            f"R&D expense {rd_expense:,.0f}M JPY."
+            f"R&D投資比率 {rd_intensity:.1%}"
+            f"（業界平均{'以上' if z_score > 0 else '以下'}）、"
+            f"R&D費 {rd_expense:,.0f}百万円、"
+            f"認知的近接性 {cog_prox:.2f}。"
         )
 
         return FeatureResult(value=round(combined, 4), rationale=rationale)
