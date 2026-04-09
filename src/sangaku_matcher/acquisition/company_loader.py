@@ -194,17 +194,29 @@ def _load_from_ir_collector() -> None:
 
 
 def _flush_batch(conn, companies: list[dict], texts: list[str], now: str) -> None:
-    """Insert a batch of companies with embeddings."""
+    """Insert a batch of companies with embeddings.
+
+    Includes financial fields (industry, revenue, rd_expense, rd_intensity)
+    when available from the source data.
+    """
     vectors = embeddings.encode(texts)
     for i, co in enumerate(companies):
+        revenue = co.get("revenue", 0) or 0
+        rd_expense = co.get("rd_expense", 0) or 0
+        rd_intensity = rd_expense / revenue if revenue > 0 and rd_expense > 0 else 0.0
         conn.execute(
             """INSERT OR REPLACE INTO companies
-               (edinet_code, sec_code, name, rd_text, rd_text_vector, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+               (edinet_code, sec_code, name, industry, revenue, rd_expense,
+                rd_intensity, rd_text, rd_text_vector, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 co["edinet_code"],
                 co["sec_code"],
                 co["name"],
+                co.get("industry", ""),
+                revenue,
+                rd_expense,
+                rd_intensity,
                 co["rd_text"],
                 vectors[i].tobytes(),
                 now,

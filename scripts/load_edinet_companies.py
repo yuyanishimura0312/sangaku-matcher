@@ -123,9 +123,9 @@ def load_to_db(companies: list[dict], batch_size: int = 100) -> None:
                         co["sec_code"],
                         co["name"],
                         co["industry"],
-                        co["capital"],  # Use capital as placeholder for revenue
-                        0,  # rd_expense unknown
-                        0,  # rd_intensity unknown
+                        co["capital"],  # Capital (資本金) — enriched to revenue later
+                        0,  # rd_expense: enriched by enrich_rd_data.py
+                        0,  # rd_intensity: enriched by enrich_rd_data.py
                         "",  # No R&D text yet
                         vectors[j].tobytes(),
                         now,
