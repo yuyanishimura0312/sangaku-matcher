@@ -100,11 +100,16 @@ def main():
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
 
-    # Get companies with midterm_plan_text but not yet v2 processed (needs <= 200 chars)
+    # Get companies with midterm_plan_text that still have v1 template needs.
+    # v1 template needs contain the pattern "求める技術領域: " near the end,
+    # while v2 Claude-generated needs have more varied structure.
     sql = """SELECT edinet_code, name, industry, rd_expense, rd_intensity, revenue, midterm_plan_text
              FROM companies
              WHERE midterm_plan_text IS NOT NULL AND LENGTH(midterm_plan_text) > 100
-               AND (estimated_needs IS NULL OR LENGTH(estimated_needs) <= 200)
+               AND (estimated_needs IS NULL
+                    OR estimated_needs LIKE '%求める技術領域: %事業化に関心。求める技術領域:%'
+                    OR estimated_needs LIKE '%パートナーを求めている。求める技術領域:%'
+                    OR estimated_needs LIKE '%外部導入に積極的。%求める技術領域:%')
              ORDER BY rd_expense DESC"""
     if args.limit:
         sql += f" LIMIT {args.limit}"
