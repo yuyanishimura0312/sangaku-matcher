@@ -190,21 +190,31 @@ textarea.form-control {
     line-height: 1.7;
 }
 
-/* Buttons */
-.btn-primary {
-    background: var(--color-accent);
-    border-color: var(--color-accent);
-    color: #FFFFFF;
+/* Buttons — override Bootstrap defaults with Miratuku CI */
+.btn-primary,
+.btn-primary:disabled,
+.btn-primary.disabled {
+    background-color: var(--color-accent) !important;
+    border-color: var(--color-accent) !important;
+    color: #FFFFFF !important;
     font-weight: 600;
     border-radius: 6px;
     padding: 0.55rem 1.5rem;
     font-size: 0.9rem;
-    transition: background 150ms ease, transform 100ms ease;
+    transition: background-color 150ms ease, transform 100ms ease;
+    --bs-btn-bg: var(--color-accent);
+    --bs-btn-border-color: var(--color-accent);
+    --bs-btn-hover-bg: var(--color-accent-dark);
+    --bs-btn-hover-border-color: var(--color-accent-dark);
+    --bs-btn-active-bg: var(--color-accent-dark);
+    --bs-btn-active-border-color: var(--color-accent-dark);
+    --bs-btn-disabled-bg: var(--color-accent);
+    --bs-btn-disabled-border-color: var(--color-accent);
 }
 .btn-primary:hover, .btn-primary:focus {
-    background: var(--color-accent-dark);
-    border-color: var(--color-accent-dark);
-    color: #FFFFFF;
+    background-color: var(--color-accent-dark) !important;
+    border-color: var(--color-accent-dark) !important;
+    color: #FFFFFF !important;
 }
 .btn-primary:active {
     transform: scale(0.98);
