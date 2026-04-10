@@ -6,34 +6,61 @@
 
 ## 概要
 
-sangaku-matcherの `need_fit` スコアラーは、企業の推定技術ニーズ（`estimated_needs`テキスト + `needs_vector`ベクトル）と入力シーズのベクトルのコサイン類似度を算出する。ニーズデータは以下のプロセスで生成される。
+sangaku-matcherの `need_fit` スコアラーは、企業の推定技術ニーズ（`estimated_needs`テキスト + `needs_vector`ベクトル）と入力シーズのベクトルのコサイン類似度を算出する。
 
-## 現行の生成方式（v1: テンプレートベース）
+現行版（v2）では、EDINET API v2から有報の「経営方針、経営環境及び対処すべき課題等」セクションを取得し、Claude APIで個社別のニーズテキストを生成している。有報が取得できなかった企業にはv1テンプレートがフォールバックとして適用される。
 
-### 生成スクリプト
+## 現行の生成方式（v2: EDINET + Claude API）
 
-```
-scripts/generate_needs.py
-```
-
-### 生成ロジック
-
-1. **業種テンプレート**: 11の主要業種に対し、その業種に典型的な技術ニーズのキーワードリストを定義（`INDUSTRY_NEEDS`辞書）
-2. **R&D特性修飾**: R&D投資比率（rd_intensity）に応じて3段階の文脈テキストを付与
-   - > 5%: 「先端技術の外部導入に積極的」
-   - > 2%: 「技術課題の解決パートナーを求めている」
-   - その他: 「外部技術による事業革新を模索」
-3. **規模修飾**: 売上高（revenue）に応じて3段階の文脈テキストを付与
-   - > 1兆円: 大手企業向け
-   - > 1000億円: 中堅〜大手向け
-   - その他: 成長企業向け
-4. **ベクトル化**: 生成テキストを `intfloat/multilingual-e5-small`（384次元）でエンコード
-
-### 生成テキストの構造
+### 生成パイプライン
 
 ```
-{企業名}の推定技術ニーズ。{R&D特性修飾}。{規模修飾}。求める技術領域: {業種テンプレートのキーワード}
+[EDINET API v2] → [有報テキスト取得] → [Claude Haiku 4.5] → [個社別ニーズテキスト] → [ベクトル化]
 ```
+
+### Step 1: 有報テキスト取得
+
+**スクリプト**: `scripts/fetch_edinet_strategy.py`
+
+EDINET API v2の書類一覧API（`documents.json`）を日付スキャンし、各企業の有価証券報告書（docTypeCode: 120）を特定。CSV形式（type=5）またはXBRL形式（type=1）で以下のセクションを抽出する。
+
+| 優先度 | XBRLタグ | セクション名 |
+|---|---|---|
+| 1 | `jpcrp_cor:BusinessPolicyBusinessEnvironmentIssuesToAddressEtcTextBlock` | 経営方針、経営環境及び対処すべき課題等 |
+| 2 | `jpcrp_cor:ManagementAnalysisOfFinancialPositionOperatingResultsAndCashFlowsTextBlock` | 経営者による財政状態の分析 |
+| 3 | `jpcrp_cor:ResearchAndDevelopmentActivitiesTextBlock` | 研究開発活動 |
+
+- **スキャン期間**: 2024-04-01 〜 2026-04-01（約2年間）
+- **取得結果**: 3,829社（98.9%）
+
+### Step 2: Claude APIによる構造化抽出
+
+**スクリプト**: `scripts/generate_needs_v2.py`
+
+取得した経営方針テキスト（最大4,000字）をClaude Haiku 4.5に入力し、200-400字の個社別ニーズテキストを生成する。
+
+```
+{企業名}の推定技術ニーズ。[R&Dの方向性の要約]。[新規事業領域への言及]。
+求める技術領域: [具体的な技術キーワード 5-10個]
+```
+
+経営方針テキストに言及されている具体的な技術分野、新規事業領域、DX施策、成長戦略に基づいて推定する。テンプレート的な記述ではなく、企業固有の内容を反映する。
+
+### Step 3: ベクトル化
+
+**スクリプト**: `scripts/regenerate_vectors.py`
+
+生成テキストを `intfloat/multilingual-e5-small`（384次元）でエンコードし、`needs_vector` として保存する。
+
+## フォールバック（v1: テンプレートベース）
+
+**スクリプト**: `scripts/generate_needs.py`
+
+有報テキストが取得できなかった企業（43社、1.1%）には、以下の3要素を組み合わせたテンプレートベースのニーズテキストを適用する。
+
+1. **業種テンプレート**: 主要業種ごとの典型的技術ニーズキーワード
+2. **R&D特性修飾**: R&D比率に応じた3段階の文脈
+3. **規模修飾**: 売上高に応じた3段階の文脈
 
 ### 業種テンプレート一覧
 
@@ -53,7 +80,7 @@ scripts/generate_needs.py
 
 上記以外の業種にはデフォルトテンプレート（DX、AI、サステナビリティ等）が適用される。
 
-### ニーズ領域カテゴリ（ダッシュボード用）
+## ニーズ領域カテゴリ（ダッシュボード用）
 
 ニーズテキストから以下の11カテゴリにタグ付けされる（`app.py` の `NEEDS_DOMAINS`）:
 
@@ -71,43 +98,42 @@ scripts/generate_needs.py
 
 ## カバレッジ
 
-- **対象**: 3,872社（全上場企業）
-- **生成率**: 100%（全社にテンプレートベースのニーズを生成）
-- **ベクトル次元**: 384（multilingual-e5-small）
+| 項目 | 値 |
+|---|---|
+| 全社数 | 3,872社 |
+| v2 個社別ニーズ | 3,829社（98.9%） |
+| v1 テンプレート（フォールバック） | 43社（1.1%） |
+| ベクトル化率 | 100%（384次元） |
+| LLMモデル | Claude Haiku 4.5 |
+| EDINETスキャン期間 | 2024-04-01 〜 2026-04-01 |
+| 産学連携レコード | 約3,000件（CiNii Research） |
 
-## 制約と改善方針
+## 改善ロードマップ
 
-### 現行版の制約
-
-1. **業種単位のテンプレート**: 同一業種内の企業は同じニーズキーワードを持つ（個別化されていない）
-2. **R&D実態の未反映**: 実際のR&Dテキスト（有報の研究開発活動セクション）は未活用
-3. **中期計画の未反映**: 中期経営計画のテキスト（新規事業領域への言及）は未取得
-
-### 次のアップデート方針（v2: EDINET + LLM推定）
-
-1. **EDINET API v2** から有報の「経営方針、経営環境及び対処すべき課題等」セクションを取得
-   - XBRLタグ: `jpcrp_cor:BusinessPolicyBusinessEnvironmentIssuesToAddressEtcTextBlock`
-   - CSV形式（type=5）で全社分をバッチ取得
-2. 取得テキストから **Claude API** で以下を構造化抽出:
-   - 新規事業領域キーワード
-   - 求める技術領域
-   - 投資予算規模・時間軸
-3. 構造化された個社別ニーズテキストを `estimated_needs` に保存
-4. 再ベクトル化して `needs_vector` を更新
-
-### さらなる改善候補（v3）
+### v3: マルチソース統合（将来構想）
 
 - **特許出願パターン分析**: Google Patents BigQueryから企業のIPC分類推移を取得し、新規参入分野を特定
-- **ニュース解析**: 産学連携ニュース、プレスリリースからリアルタイムのニーズ変化を検出
-- **双方向フィードバック**: マッチング結果へのユーザーフィードバックを学習してニーズ精度を改善
+- **ニュース・プレスリリース解析**: 産学連携ニュース、プレスリリースからリアルタイムのニーズ変化を検出
+- **ユーザーフィードバック学習**: マッチング結果へのフィードバックでニーズ精度を継続改善
+- **研究開発活動セクション統合**: 有報の「研究開発活動」テキストも活用し、より詳細な技術領域を特定
 
 ## 再生成手順
 
 ```bash
 cd ~/projects/apps/sangaku-matcher
-python3 scripts/generate_needs.py --batch-size 200
+
+# Step 1: EDINET有報テキスト取得（新規企業分のみ）
+python3 scripts/fetch_edinet_strategy.py --start-date 2024-04-01 --end-date 2026-04-01
+
+# Step 2: Claude APIでv2ニーズ生成（未処理企業分のみ）
+python3 scripts/generate_needs_v2.py --batch-size 50
+
+# Step 3: ベクトル再生成（全社）
+python3 scripts/regenerate_vectors.py --batch-size 200
+
+# Step 4: コミット・プッシュ
 git add data/matcher.db
-git commit -m "data: regenerate estimated needs"
+git commit -m "data: regenerate v2 needs"
 git push
 ```
 
@@ -115,12 +141,15 @@ git push
 
 | ファイル | 役割 |
 |---|---|
-| `scripts/generate_needs.py` | ニーズテキスト生成・ベクトル化バッチ |
-| `scripts/enrich_collaborations.py` | 産学連携実績データ収集（CiNii） |
+| `scripts/fetch_edinet_strategy.py` | EDINET API v2から有報テキスト取得 |
+| `scripts/generate_needs_v2.py` | Claude APIによる個社別ニーズ生成 |
+| `scripts/generate_needs.py` | v1テンプレートベース生成（フォールバック） |
+| `scripts/regenerate_vectors.py` | ニーズベクトル一括再生成 |
+| `scripts/enrich_collaborations.py` | 産学連携実績データ収集（CiNii Research） |
 | `src/sangaku_matcher/scoring/need_fit.py` | need_fitスコアラー |
 | `src/sangaku_matcher/web/app.py` | ニーズダッシュボード（`NEEDS_DOMAINS`定義） |
-| `src/sangaku_matcher/acquisition/pdf_extractor.py` | 有報テキスト抽出（将来のv2用） |
 
 ## 更新履歴
 
-- **2026-04-10 v1**: テンプレートベースの初期生成。3,872社全社にニーズデータを付与。
+- **2026-04-11 v2**: EDINET API v2から3,829社の有報経営方針テキストを取得し、Claude Haiku 4.5で個社別ニーズを生成。カバレッジ98.9%。
+- **2026-04-10 v1**: テンプレートベースの初期生成。3,872社全社にニーズデータを付与。CiNii Researchから産学連携実績データを収集。

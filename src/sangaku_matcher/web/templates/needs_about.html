@@ -13,21 +13,52 @@
 <div class="card mb-4">
     <div class="card-header">概要</div>
     <div class="card-body" style="font-size:0.88rem;line-height:1.9">
-        <p>sangaku-matcherの <code>need_fit</code> スコアラーは、企業の推定技術ニーズと入力シーズの意味的類似度を算出します。推定ニーズは「ニーズテキスト」と「ニーズベクトル（384次元）」のペアで構成され、以下のプロセスで生成されています。</p>
+        <p>sangaku-matcherの <code>need_fit</code> スコアラーは、企業の推定技術ニーズと入力シーズの意味的類似度を算出します。推定ニーズは「ニーズテキスト」と「ニーズベクトル（384次元）」のペアで構成されます。</p>
+        <p>現行版（v2）では、EDINET API v2から有価証券報告書の経営方針セクションを取得し、Claude APIで個社別のニーズテキストを生成しています。有報が取得できなかった企業にはv1テンプレートがフォールバックとして適用されます。</p>
         <div class="d-flex gap-2 flex-wrap mt-3">
-            <span class="badge" style="background:var(--color-accent);color:#fff;font-size:0.78rem;padding:0.4em 0.8em">現行バージョン: v1（テンプレートベース）</span>
+            <span class="badge" style="background:var(--color-accent);color:#fff;font-size:0.78rem;padding:0.4em 0.8em">現行バージョン: v2（EDINET + Claude API）</span>
             <span class="badge" style="background:var(--color-muted-bg);color:var(--color-text-muted);font-size:0.78rem;padding:0.4em 0.8em">対象: {{ company_count }}社</span>
-            <span class="badge" style="background:var(--color-muted-bg);color:var(--color-text-muted);font-size:0.78rem;padding:0.4em 0.8em">カバレッジ: 100%</span>
+            <span class="badge" style="background:var(--color-muted-bg);color:var(--color-text-muted);font-size:0.78rem;padding:0.4em 0.8em">v2カバレッジ: {{ v2_pct }}%（{{ v2_count }}社）</span>
             <span class="badge" style="background:var(--color-muted-bg);color:var(--color-text-muted);font-size:0.78rem;padding:0.4em 0.8em">ベクトル: multilingual-e5-small (384d)</span>
         </div>
     </div>
 </div>
 
-{# ── Generation Logic ── #}
+{# ── v2 Generation Logic ── #}
 <div class="card mb-4">
-    <div class="card-header">生成ロジック（v1）</div>
+    <div class="card-header">生成ロジック（v2: EDINET + Claude API）</div>
     <div class="card-body" style="font-size:0.88rem;line-height:1.9">
-        <p>各企業のニーズテキストは、3つの要素を組み合わせて自動生成されます。</p>
+        <p>v2では、有価証券報告書の原文テキストからClaude APIを使い、企業ごとに固有のニーズテキストを生成します。</p>
+
+        <h5 style="font-size:0.9rem;font-weight:600;margin-top:1.25rem">1. 有報テキスト取得（EDINET API v2）</h5>
+        <p>EDINET API v2の書類一覧API（<code>documents.json</code>）を日付スキャンし、各企業の有価証券報告書（docTypeCode: 120）を特定します。取得した書類からCSV形式（type=5）またはXBRL形式（type=1）で以下のセクションを抽出します。</p>
+        <table class="table" style="font-size:0.82rem">
+            <thead><tr><th>優先度</th><th>XBRLタグ</th><th>セクション名</th></tr></thead>
+            <tbody>
+                <tr><td>1</td><td><code style="font-size:0.75rem">jpcrp_cor:BusinessPolicyBusinessEnvironmentIssuesToAddressEtcTextBlock</code></td><td>経営方針、経営環境及び対処すべき課題等</td></tr>
+                <tr><td>2</td><td><code style="font-size:0.75rem">jpcrp_cor:ManagementAnalysisOfFinancialPositionOperatingResultsAndCashFlowsTextBlock</code></td><td>経営者による財政状態、経営成績及びCFの状況の分析</td></tr>
+                <tr><td>3</td><td><code style="font-size:0.75rem">jpcrp_cor:ResearchAndDevelopmentActivitiesTextBlock</code></td><td>研究開発活動</td></tr>
+            </tbody>
+        </table>
+        <p>スキャン期間: 2024-04-01 〜 2026-04-01（約2年間）。{{ v2_count }}社の有報テキストを取得済み。</p>
+
+        <h5 style="font-size:0.9rem;font-weight:600;margin-top:1.25rem">2. Claude APIによる構造化抽出</h5>
+        <p>取得した経営方針テキスト（最大4,000字）をClaude Haiku 4.5に入力し、以下の構造で200〜400字の個社別ニーズテキストを生成します。</p>
+        <div style="background:var(--color-muted-bg);padding:0.75rem 1rem;border-radius:6px;font-size:0.82rem;margin-top:0.75rem;font-family:monospace">
+            {企業名}の推定技術ニーズ。[R&Dの方向性の要約]。[新規事業領域への言及]。求める技術領域: [具体的な技術キーワード 5-10個]
+        </div>
+        <p style="margin-top:0.75rem">テンプレート的な記述ではなく、経営方針テキストに言及されている具体的な技術分野、新規事業領域、DX施策、成長戦略に基づいて推定します。</p>
+
+        <h5 style="font-size:0.9rem;font-weight:600;margin-top:1.25rem">3. ベクトル化</h5>
+        <p>生成されたテキストを <code>intfloat/multilingual-e5-small</code>（384次元多言語モデル）でエンコードし、<code>needs_vector</code> として保存します。マッチング時にはこのベクトルと入力シーズのベクトルのコサイン類似度が <code>need_fit</code> スコアとなります。</p>
+    </div>
+</div>
+
+{# ── v1 Fallback ── #}
+<div class="card mb-4">
+    <div class="card-header">フォールバック（v1: テンプレートベース）</div>
+    <div class="card-body" style="font-size:0.88rem;line-height:1.9">
+        <p>有報テキストが取得できなかった {{ v1_count }}社には、業種テンプレートによるフォールバックが適用されます。3つの要素を組み合わせて自動生成します。</p>
 
         <h5 style="font-size:0.9rem;font-weight:600;margin-top:1.25rem">1. 業種テンプレート</h5>
         <p>主要業種ごとに、その業種に典型的な技術ニーズのキーワードリストを定義しています。業種が一致する企業には同一のキーワード群が割り当てられます。</p>
@@ -44,7 +75,6 @@
         </table>
 
         <h5 style="font-size:0.9rem;font-weight:600;margin-top:1.25rem">3. 規模修飾</h5>
-        <p>売上高に応じて連携の受入体制に関する文脈を付与します。</p>
         <table class="table" style="font-size:0.82rem">
             <thead><tr><th>売上高</th><th>修飾テキスト</th></tr></thead>
             <tbody>
@@ -54,34 +84,43 @@
             </tbody>
         </table>
 
-        <h5 style="font-size:0.9rem;font-weight:600;margin-top:1.25rem">4. ベクトル化</h5>
-        <p>生成されたテキストを <code>intfloat/multilingual-e5-small</code>（384次元多言語モデル）でエンコードし、<code>needs_vector</code> として保存します。マッチング時にはこのベクトルと入力シーズのベクトルのコサイン類似度が <code>need_fit</code> スコアとなります。</p>
-
         <div style="background:var(--color-muted-bg);padding:0.75rem 1rem;border-radius:6px;font-size:0.82rem;margin-top:1rem;font-family:monospace">
             {企業名}の推定技術ニーズ。{R&D特性修飾}。{規模修飾}。求める技術領域: {業種テンプレート}
         </div>
     </div>
 </div>
 
-{# ── Industry Templates ── #}
+{# ── Coverage Stats ── #}
 <div class="card mb-4">
-    <div class="card-header">業種別ニーズテンプレート</div>
-    <div class="card-body" style="padding:0">
-        <table class="table mb-0" style="font-size:0.82rem">
-            <thead><tr><th style="width:8rem">業種</th><th>主要ニーズキーワード</th></tr></thead>
+    <div class="card-header">カバレッジ</div>
+    <div class="card-body" style="font-size:0.88rem;line-height:1.9">
+        <div class="row mb-3">
+            <div class="col-md-4 mb-2">
+                <div style="background:var(--color-muted-bg);padding:0.75rem;border-radius:6px;text-align:center">
+                    <div style="font-size:1.4rem;font-weight:700;color:var(--color-accent)">{{ v2_count }}</div>
+                    <div style="font-size:0.78rem;color:var(--color-text-subtle)">v2 個社別ニーズ（{{ v2_pct }}%）</div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-2">
+                <div style="background:var(--color-muted-bg);padding:0.75rem;border-radius:6px;text-align:center">
+                    <div style="font-size:1.4rem;font-weight:700">{{ v1_count }}</div>
+                    <div style="font-size:0.78rem;color:var(--color-text-subtle)">v1 テンプレート（フォールバック）</div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-2">
+                <div style="background:var(--color-muted-bg);padding:0.75rem;border-radius:6px;text-align:center">
+                    <div style="font-size:1.4rem;font-weight:700">{{ company_count }}</div>
+                    <div style="font-size:0.78rem;color:var(--color-text-subtle)">全社（ベクトル100%）</div>
+                </div>
+            </div>
+        </div>
+        <table class="table" style="font-size:0.82rem">
+            <thead><tr><th>項目</th><th>値</th></tr></thead>
             <tbody>
-                <tr><td>情報・通信業</td><td>AI・機械学習、サイバーセキュリティ、クラウドネイティブ、自然言語処理、IoT、量子コンピューティング、プライバシー保護技術</td></tr>
-                <tr><td>電気機器</td><td>パワー半導体・SiC/GaN素子、次世代ディスプレイ、センサーフュージョン・LiDAR、ロボティクス、全固体電池、6G通信、光半導体</td></tr>
-                <tr><td>化学</td><td>機能性材料、触媒技術、バイオプラスチック、電池材料、半導体プロセス材料、マテリアルズインフォマティクス、CO2固定・回収</td></tr>
-                <tr><td>医薬品</td><td>抗体薬物複合体(ADC)、核酸医薬・mRNA、細胞治療・遺伝子治療、AI創薬、バイオマーカー、再生医療・iPS、デジタルセラピューティクス</td></tr>
-                <tr><td>機械</td><td>スマートファクトリー・Industry 4.0、予知保全・デジタルツイン、産業用ロボット、3Dプリンティング、水素関連機器、精密加工</td></tr>
-                <tr><td>輸送用機器</td><td>電動化(BEV/PHEV/FCEV)、自動運転・ADAS、車載半導体・車載OS、軽量化材料・CFRP、コネクティッドカー、全固体電池</td></tr>
-                <tr><td>食料品</td><td>フードテック・代替タンパク質、食品保存技術、発酵・バイオテクノロジー、健康機能性食品、スマート農業連携</td></tr>
-                <tr><td>建設業</td><td>BIM/CIM・建設DX、ロボット施工、ZEB/ZEH・省エネ建築、インフラモニタリング、スマートシティ基盤</td></tr>
-                <tr><td>小売業</td><td>EC・オムニチャネル、需要予測・在庫最適化AI、店舗DX、サプライチェーン最適化、決済テクノロジー</td></tr>
-                <tr><td>卸売業</td><td>サプライチェーンマネジメント高度化、貿易・物流DX、B2Bマーケットプレイス、倉庫自動化・ロボティクス</td></tr>
-                <tr><td>サービス業</td><td>顧客行動分析、業務自動化・RPA、需要予測、ヘルスケアテクノロジー、人材マッチング・HR Tech、教育テクノロジー</td></tr>
-                <tr style="background:var(--color-muted-bg)"><td>その他（デフォルト）</td><td>DX推進・業務デジタル化、データ分析・AI活用、サステナビリティ・環境対応技術、新規事業開発支援、省エネルギー対応</td></tr>
+                <tr><td>EDINET有報スキャン期間</td><td>2024-04-01 〜 2026-04-01（約2年間）</td></tr>
+                <tr><td>LLMモデル（ニーズ抽出）</td><td>Claude Haiku 4.5</td></tr>
+                <tr><td>埋め込みモデル</td><td>intfloat/multilingual-e5-small（384次元）</td></tr>
+                <tr><td>産学連携レコード</td><td>{{ "{:,}".format(collab_count) }}件（CiNii Research）</td></tr>
             </tbody>
         </table>
     </div>
@@ -105,25 +144,6 @@
     </div>
 </div>
 
-{# ── Limitations & Roadmap ── #}
-<div class="card mb-4">
-    <div class="card-header">制約と改善ロードマップ</div>
-    <div class="card-body" style="font-size:0.88rem;line-height:1.9">
-        <h5 style="font-size:0.9rem;font-weight:600;color:var(--color-danger)">現行版（v1）の制約</h5>
-        <ul style="font-size:0.85rem">
-            <li><strong>業種単位のテンプレート:</strong> 同一業種内の企業は同じニーズキーワードを持ち、個社ごとの差別化がされていない</li>
-            <li><strong>R&D実態の未反映:</strong> 有価証券報告書の研究開発活動セクションのテキストは未活用</li>
-            <li><strong>中期計画の未反映:</strong> 中期経営計画テキスト（新規事業領域への言及）は未取得</li>
-        </ul>
-
-        <h5 style="font-size:0.9rem;font-weight:600;color:var(--color-accent);margin-top:1.25rem">v2: EDINET + LLM推定（計画中）</h5>
-        <p style="font-size:0.85rem">EDINET API v2から有報の「経営方針、経営環境及び対処すべき課題等」セクションを取得し、Claude APIで新規事業領域・求める技術領域・投資予算規模を構造化抽出。個社別のニーズテキストを生成する。</p>
-
-        <h5 style="font-size:0.9rem;font-weight:600;color:var(--color-text-subtle);margin-top:1.25rem">v3: マルチソース統合（将来構想）</h5>
-        <p style="font-size:0.85rem">特許出願パターン分析（Google Patents BigQuery）、産学連携ニュース・プレスリリース解析、マッチング結果へのユーザーフィードバック学習を統合し、リアルタイムのニーズ変化を検出する。</p>
-    </div>
-</div>
-
 {# ── Scoring Integration ── #}
 <div class="card mb-4">
     <div class="card-header">マッチングスコアへの組み込み</div>
@@ -143,13 +163,50 @@
     </div>
 </div>
 
+{# ── Roadmap ── #}
+<div class="card mb-4">
+    <div class="card-header">改善ロードマップ</div>
+    <div class="card-body" style="font-size:0.88rem;line-height:1.9">
+        <h5 style="font-size:0.9rem;font-weight:600;color:var(--color-text-subtle)">v3: マルチソース統合（将来構想）</h5>
+        <ul style="font-size:0.85rem">
+            <li><strong>特許出願パターン分析:</strong> Google Patents BigQueryから企業のIPC分類推移を取得し、新規参入分野を特定</li>
+            <li><strong>ニュース・プレスリリース解析:</strong> 産学連携ニュース、プレスリリースからリアルタイムのニーズ変化を検出</li>
+            <li><strong>ユーザーフィードバック学習:</strong> マッチング結果へのフィードバックでニーズ精度を継続改善</li>
+            <li><strong>研究開発活動セクション統合:</strong> 有報の「研究開発活動」テキストも活用し、より詳細な技術領域を特定</li>
+        </ul>
+    </div>
+</div>
+
+{# ── Related Files ── #}
+<div class="card mb-4">
+    <div class="card-header">関連ファイル</div>
+    <div class="card-body" style="padding:0">
+        <table class="table mb-0" style="font-size:0.82rem">
+            <thead><tr><th>ファイル</th><th>役割</th></tr></thead>
+            <tbody>
+                <tr><td><code>scripts/fetch_edinet_strategy.py</code></td><td>EDINET API v2から有報テキスト取得</td></tr>
+                <tr><td><code>scripts/generate_needs_v2.py</code></td><td>Claude APIによる個社別ニーズ生成</td></tr>
+                <tr><td><code>scripts/generate_needs.py</code></td><td>v1テンプレートベース生成（フォールバック）</td></tr>
+                <tr><td><code>scripts/regenerate_vectors.py</code></td><td>ニーズベクトル一括再生成</td></tr>
+                <tr><td><code>scripts/enrich_collaborations.py</code></td><td>産学連携実績データ収集（CiNii Research）</td></tr>
+                <tr><td><code>src/sangaku_matcher/scoring/need_fit.py</code></td><td>need_fitスコアラー</td></tr>
+                <tr><td><code>src/sangaku_matcher/web/app.py</code></td><td>ニーズダッシュボード（NEEDS_DOMAINS定義）</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
 {# ── Update History ── #}
 <div class="card mb-4">
     <div class="card-header">更新履歴</div>
     <div class="card-body" style="font-size:0.85rem">
+        <div class="d-flex gap-3 align-items-start mb-3">
+            <span style="font-weight:600;white-space:nowrap">2026-04-11</span>
+            <span>v2リリース。EDINET API v2から{{ v2_count }}社の有報経営方針テキストを取得し、Claude Haiku 4.5で個社別ニーズを生成。カバレッジ{{ v2_pct }}%。スキャン期間を2024-04-01〜2026-04-01に拡大し、3月決算企業の有報提出ピーク（4〜6月）を完全カバー。</span>
+        </div>
         <div class="d-flex gap-3 align-items-start">
             <span style="font-weight:600;white-space:nowrap">2026-04-10</span>
-            <span>v1リリース。テンプレートベースの初期生成。{{ company_count }}社全社にニーズデータを付与。CiNii Researchから産学連携実績データを収集（1,866件）。</span>
+            <span>v1リリース。テンプレートベースの初期生成。{{ company_count }}社全社にニーズデータを付与。CiNii Researchから産学連携実績データを収集。</span>
         </div>
     </div>
 </div>

@@ -362,8 +362,21 @@ async def needs_page(
 async def needs_about(request: Request):
     with connect(settings.matcher_db_path) as conn:
         company_count = conn.execute("SELECT COUNT(*) as c FROM companies").fetchone()["c"]
+        v2_count = conn.execute(
+            "SELECT COUNT(*) as c FROM companies "
+            "WHERE midterm_plan_text IS NOT NULL AND LENGTH(midterm_plan_text) > 100"
+        ).fetchone()["c"]
+        v1_count = company_count - v2_count
+        collab_count = conn.execute(
+            "SELECT COUNT(*) as c FROM collaborations"
+        ).fetchone()["c"]
+    v2_pct = round(v2_count / company_count * 100, 1) if company_count else 0
     return templates.TemplateResponse(request, "needs_about.html", {
         "company_count": company_count,
+        "v2_count": v2_count,
+        "v1_count": v1_count,
+        "v2_pct": v2_pct,
+        "collab_count": collab_count,
         "domain_keywords": NEEDS_DOMAINS,
     })
 
