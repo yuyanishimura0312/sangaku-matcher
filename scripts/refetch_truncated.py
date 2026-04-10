@@ -1,10 +1,9 @@
-"""Fetch management strategy text from EDINET 有報 for all companies.
+"""Re-fetch 有報 text for companies missing doc_id, period_end, or with truncated text.
 
-Downloads CSV (type=5) from EDINET API v2, extracts the
-'経営方針、経営環境及び対処すべき課題等' section via XBRL tag.
+Scans EDINET for doc_ids, re-downloads, and updates matcher DB + ir-collector sections.
 
 Usage:
-    python scripts/fetch_edinet_strategy.py [--limit N] [--start-date 2024-04-01] [--end-date 2025-03-31]
+    python scripts/refetch_truncated.py [--start-date 2024-04-01] [--end-date 2026-04-01]
 """
 from __future__ import annotations
 
@@ -17,6 +16,7 @@ import os
 import re
 import sqlite3
 import subprocess
+import sys
 import time
 import zipfile
 from datetime import datetime, timedelta
@@ -27,12 +27,12 @@ from urllib.error import HTTPError
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-DB_PATH = Path(__file__).parent.parent / "data" / "matcher.db"
+MATCHER_DB = Path(__file__).parent.parent / "data" / "matcher.db"
+IR_DB = Path.home() / "projects/apps/ir-collector/data/ir.db"
 EDINET_BASE = "https://api.edinet-fsa.go.jp/api/v2"
 
-# XBRL tag for management strategy section
 STRATEGY_TAG = "jpcrp_cor:BusinessPolicyBusinessEnvironmentIssuesToAddressEtcTextBlock"
-# Fallback tags
+STRATEGY_NAME = "経営方針、経営環境及び対処すべき課題等"
 FALLBACK_TAGS = [
     "jpcrp_cor:ManagementAnalysisOfFinancialPositionOperatingResultsAndCashFlowsTextBlock",
     "jpcrp_cor:ResearchAndDevelopmentActivitiesTextBlock",
@@ -56,7 +56,6 @@ def _get_api_key() -> str:
 
 
 def _api_get(path: str, params: dict, api_key: str) -> dict | bytes:
-    """Make EDINET API request."""
     query = "&".join(f"{k}={v}" for k, v in params.items())
     url = f"{EDINET_BASE}/{path}?{query}&Subscription-Key={api_key}"
     req = Request(url, headers={"User-Agent": "sangaku-matcher/1.0"})
@@ -76,7 +75,6 @@ def _api_get(path: str, params: dict, api_key: str) -> dict | bytes:
 
 
 def _strip_html(text: str) -> str:
-    """Remove HTML tags and clean up text."""
     text = re.sub(r'<[^>]+>', '', text)
     text = re.sub(r'&nbsp;', ' ', text)
     text = re.sub(r'&amp;', '&', text)
@@ -86,59 +84,16 @@ def _strip_html(text: str) -> str:
     return text.strip()
 
 
-def _find_yuho_doc_ids(api_key: str, start_date: str, end_date: str, target_codes: set[str]) -> dict[str, dict]:
-    """Scan EDINET documents to find 有報 doc_ids for target companies.
-
-    Returns: {edinet_code: {"doc_id": str, "period_end": str|None}}
-    """
-    found: dict[str, dict] = {}
-    current = datetime.strptime(start_date, "%Y-%m-%d")
-    end = datetime.strptime(end_date, "%Y-%m-%d")
-
-    while current <= end:
-        date_str = current.strftime("%Y-%m-%d")
-        try:
-            data = _api_get("documents.json", {"date": date_str, "type": "2"}, api_key)
-            results = data.get("results", [])
-            for doc in results:
-                if doc.get("docTypeCode") != "120":
-                    continue
-                ec = doc.get("edinetCode")
-                if ec and ec in target_codes and ec not in found:
-                    found[ec] = {
-                        "doc_id": doc["docID"],
-                        "period_end": doc.get("periodEnd"),
-                    }
-            if results:
-                logger.debug("  %s: %d docs, %d 有報 found so far", date_str, len(results), len(found))
-        except Exception as e:
-            logger.warning("Failed to fetch %s: %s", date_str, e)
-
-        time.sleep(0.5)
-        current += timedelta(days=1)
-
-        # Progress every 30 days
-        if (current - datetime.strptime(start_date, "%Y-%m-%d")).days % 30 == 0:
-            logger.info("Scanning %s... found %d/%d 有報", date_str, len(found), len(target_codes))
-
-    return found
-
-
 def _extract_strategy_from_csv(zip_data: bytes) -> str | None:
-    """Extract strategy text from EDINET CSV zip."""
     try:
         with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
-            # Look for the main CSV file (jpcrp*.csv pattern)
             csv_files = [n for n in zf.namelist() if n.endswith('.csv') and 'jpcrp' in n.lower()]
             if not csv_files:
-                # Try any CSV
                 csv_files = [n for n in zf.namelist() if n.endswith('.csv')]
             if not csv_files:
                 return None
-
             for csv_file in csv_files:
                 raw = zf.read(csv_file)
-                # Try UTF-16 (EDINET default) then UTF-8
                 for encoding in ('utf-16', 'utf-8', 'shift_jis'):
                     try:
                         text = raw.decode(encoding)
@@ -147,20 +102,15 @@ def _extract_strategy_from_csv(zip_data: bytes) -> str | None:
                         continue
                 else:
                     continue
-
-                # Parse TSV/CSV
                 reader = csv.reader(io.StringIO(text), delimiter='\t')
                 for row in reader:
                     if len(row) < 2:
                         continue
-                    # Check if any column contains the target tag
                     for i, cell in enumerate(row):
                         if STRATEGY_TAG in cell:
-                            # The value is typically in the next column or a specific column
                             for j in range(i + 1, min(i + 5, len(row))):
                                 if row[j] and len(row[j]) > 50:
                                     return _strip_html(row[j])
-                        # Also check fallback tags
                         for tag in FALLBACK_TAGS:
                             if tag in cell:
                                 for j in range(i + 1, min(i + 5, len(row))):
@@ -168,19 +118,16 @@ def _extract_strategy_from_csv(zip_data: bytes) -> str | None:
                                         return _strip_html(row[j])
     except Exception as e:
         logger.debug("CSV extraction failed: %s", e)
-
     return None
 
 
 def _extract_strategy_from_xbrl(zip_data: bytes) -> str | None:
-    """Extract strategy text from EDINET XBRL zip (fallback)."""
     try:
         with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
             xbrl_files = [n for n in zf.namelist()
                          if n.endswith('.htm') or n.endswith('.xbrl')]
             for xf in xbrl_files:
                 content = zf.read(xf).decode('utf-8', errors='ignore')
-                # Search for the strategy tag in XBRL
                 pattern = rf'<{STRATEGY_TAG}[^>]*>(.*?)</{STRATEGY_TAG}>'
                 m = re.search(pattern, content, re.DOTALL | re.IGNORECASE)
                 if m:
@@ -192,56 +139,78 @@ def _extract_strategy_from_xbrl(zip_data: bytes) -> str | None:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--limit", type=int, default=None)
-    parser.add_argument("--start-date", default="2024-07-01", help="Scan start (YYYY-MM-DD)")
-    parser.add_argument("--end-date", default="2025-06-30", help="Scan end (YYYY-MM-DD)")
+    parser.add_argument("--start-date", default="2024-04-01")
+    parser.add_argument("--end-date", default="2026-04-01")
     args = parser.parse_args()
 
     api_key = _get_api_key()
-    logger.info("EDINET API key loaded")
 
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(MATCHER_DB))
     conn.row_factory = sqlite3.Row
 
-    # Get target companies
-    sql = "SELECT edinet_code, name FROM companies ORDER BY rd_expense DESC"
-    if args.limit:
-        sql += f" LIMIT {args.limit}"
-    companies = conn.execute(sql).fetchall()
-    target_codes = {r["edinet_code"] for r in companies}
-    company_names = {r["edinet_code"]: r["name"] for r in companies}
-    logger.info("Target: %d companies", len(target_codes))
-
-    # Skip companies that already have midterm_plan_text
-    existing = set()
-    for row in conn.execute(
-        "SELECT edinet_code FROM companies WHERE midterm_plan_text IS NOT NULL AND LENGTH(midterm_plan_text) > 100"
-    ):
-        existing.add(row["edinet_code"])
-    target_codes -= existing
-    logger.info("After excluding existing: %d companies to fetch", len(target_codes))
+    # Target: companies missing doc_id, period_end, or with truncated text (20000 chars)
+    targets = conn.execute(
+        """SELECT edinet_code, name FROM companies
+           WHERE midterm_plan_text IS NOT NULL AND LENGTH(midterm_plan_text) > 100
+             AND (source_doc_id IS NULL
+                  OR yuho_period_end IS NULL
+                  OR LENGTH(midterm_plan_text) >= 19999)"""
+    ).fetchall()
+    target_codes = {r["edinet_code"] for r in targets}
+    company_names = {r["edinet_code"]: r["name"] for r in targets}
+    logger.info("Target: %d companies to refetch (missing doc_id/period_end or truncated)", len(target_codes))
 
     if not target_codes:
-        logger.info("All companies already have strategy text. Done.")
+        logger.info("Nothing to refetch. Done.")
         conn.close()
         return
 
-    # Phase 1: Find doc_ids
-    logger.info("Phase 1: Scanning EDINET for 有報 doc_ids (%s to %s)...", args.start_date, args.end_date)
-    doc_ids = _find_yuho_doc_ids(api_key, args.start_date, args.end_date, target_codes)
-    logger.info("Found %d 有報 documents", len(doc_ids))
+    # Phase 1: Find doc_ids with period_end
+    logger.info("Phase 1: Scanning EDINET for doc_ids...")
+    found: dict[str, dict] = {}
+    current = datetime.strptime(args.start_date, "%Y-%m-%d")
+    end = datetime.strptime(args.end_date, "%Y-%m-%d")
 
-    # Phase 2: Download and extract strategy text
-    logger.info("Phase 2: Downloading CSV and extracting strategy text...")
+    while current <= end:
+        date_str = current.strftime("%Y-%m-%d")
+        try:
+            data = _api_get("documents.json", {"date": date_str, "type": "2"}, api_key)
+            for doc in data.get("results", []):
+                if doc.get("docTypeCode") != "120":
+                    continue
+                ec = doc.get("edinetCode")
+                if ec and ec in target_codes and ec not in found:
+                    found[ec] = {
+                        "doc_id": doc["docID"],
+                        "period_end": doc.get("periodEnd"),
+                    }
+        except Exception as e:
+            logger.warning("Failed %s: %s", date_str, e)
+        time.sleep(0.5)
+        current += timedelta(days=1)
+        if (current - datetime.strptime(args.start_date, "%Y-%m-%d")).days % 30 == 0:
+            logger.info("Scanning %s... found %d/%d", date_str, len(found), len(target_codes))
+
+    logger.info("Found %d doc_ids", len(found))
+
+    # Phase 2: Re-download and extract (no truncation)
+    logger.info("Phase 2: Re-downloading and extracting...")
+
+    # Open ir-collector DB for section updates
+    ir_conn = None
+    if IR_DB.exists():
+        ir_conn = sqlite3.connect(str(IR_DB))
+        ir_conn.row_factory = sqlite3.Row
+
+    now = datetime.now().isoformat(timespec="seconds")
     success = 0
     failed = 0
 
-    for i, (edinet_code, doc_info) in enumerate(doc_ids.items()):
+    for i, (edinet_code, doc_info) in enumerate(found.items()):
         doc_id = doc_info["doc_id"]
         period_end = doc_info.get("period_end")
         name = company_names.get(edinet_code, edinet_code)
         try:
-            # Try CSV first (type=5)
             csv_data = _api_get(f"documents/{doc_id}", {"type": "5"}, api_key)
             time.sleep(1.0)
 
@@ -249,7 +218,6 @@ def main():
             if isinstance(csv_data, bytes) and len(csv_data) > 100:
                 strategy_text = _extract_strategy_from_csv(csv_data)
 
-            # Fallback to XBRL (type=1) if CSV failed
             if not strategy_text:
                 xbrl_data = _api_get(f"documents/{doc_id}", {"type": "1"}, api_key)
                 time.sleep(1.0)
@@ -257,7 +225,7 @@ def main():
                     strategy_text = _extract_strategy_from_xbrl(xbrl_data)
 
             if strategy_text and len(strategy_text) > 100:
-                # No truncation — store full text
+                # Update matcher DB (no truncation)
                 conn.execute(
                     """UPDATE companies
                        SET midterm_plan_text = ?, source_doc_id = ?, yuho_period_end = ?
@@ -265,23 +233,49 @@ def main():
                     (strategy_text, doc_id, period_end, edinet_code),
                 )
                 conn.commit()
+
+                # Update ir-collector sections
+                if ir_conn:
+                    ir_conn.execute(
+                        """INSERT INTO sections
+                           (doc_id, edinet_code, filer_name, section_tag, section_name,
+                            text_content, char_count, period_end, extracted_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           ON CONFLICT(edinet_code, section_tag, period_end) DO UPDATE SET
+                            doc_id = excluded.doc_id,
+                            text_content = excluded.text_content,
+                            char_count = excluded.char_count,
+                            extracted_at = excluded.extracted_at""",
+                        (doc_id, edinet_code, name, STRATEGY_TAG, STRATEGY_NAME,
+                         strategy_text, len(strategy_text), period_end, now),
+                    )
+                    ir_conn.commit()
+
                 success += 1
-                logger.info("[%d/%d] %s: %d chars extracted (doc=%s, period=%s)",
-                           i + 1, len(doc_ids), name, len(strategy_text), doc_id, period_end)
+                logger.info("[%d/%d] %s: %d chars (doc=%s, period=%s)",
+                           i + 1, len(found), name, len(strategy_text), doc_id, period_end)
             else:
+                # Still save doc_id and period_end even if text extraction fails
+                conn.execute(
+                    """UPDATE companies SET source_doc_id = ?, yuho_period_end = ?
+                       WHERE edinet_code = ?""",
+                    (doc_id, period_end, edinet_code),
+                )
+                conn.commit()
                 failed += 1
-                logger.debug("[%d/%d] %s: no strategy text found", i + 1, len(doc_ids), name)
 
         except Exception as e:
             failed += 1
-            logger.warning("[%d/%d] %s: error - %s", i + 1, len(doc_ids), name, e)
+            logger.warning("[%d/%d] %s: error - %s", i + 1, len(found), name, e)
             time.sleep(2)
 
         if (i + 1) % 50 == 0:
-            logger.info("Progress: %d/%d processed, %d success, %d failed", i + 1, len(doc_ids), success, failed)
+            logger.info("Progress: %d/%d, success=%d, failed=%d", i + 1, len(found), success, failed)
 
     conn.close()
-    logger.info("Done. Success: %d, Failed: %d, Total: %d", success, failed, len(doc_ids))
+    if ir_conn:
+        ir_conn.close()
+    logger.info("Done. Success: %d, Failed: %d, Total: %d", success, failed, len(found))
 
 
 if __name__ == "__main__":
