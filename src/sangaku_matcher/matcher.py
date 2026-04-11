@@ -26,7 +26,7 @@ from sangaku_matcher.scoring.abs_cap import AbsCapScorer
 from sangaku_matcher.scoring.past_ties import PastTiesScorer
 from sangaku_matcher.scoring.future_option import FutureOptionScorer
 from sangaku_matcher.scoring.open_inno import OpenInnoScorer
-from sangaku_matcher.scoring.humanities_fit import HumanitiesFitScorer
+from sangaku_matcher.scoring.theme_fit import ThemeFitScorer
 from sangaku_matcher.seeds import Seed
 
 logger = logging.getLogger(__name__)
@@ -395,11 +395,15 @@ def run_match(seed: Seed, top_n: int | None = None) -> MatchResult:
     open_inno.set_collaboration_data(collab_data)
     open_inno.set_industry_stats(industry_stats)
 
-    humanities_fit = HumanitiesFitScorer()
+    humanities_fit = ThemeFitScorer()
+
+    # Load theme data for GTA-based scoring
+    with connect(settings.matcher_db_path) as theme_conn:
+        humanities_fit.load_themes(theme_conn)
+    humanities_fit.precompute_seed_themes(seed.semantic_vector)
 
     # Pre-compute similarity distributions for z-score normalization
     need_fit.precompute_distribution(seed.semantic_vector, companies)
-    humanities_fit.precompute_distribution(seed.semantic_vector, companies)
 
     scorers = [
         (tech_prox, settings.w_tech_prox),
