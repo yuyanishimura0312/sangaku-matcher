@@ -121,6 +121,7 @@ def _load_match_result(seed_id: str):
             "past_ties": "past_ties",
             "trl_compat": "future_option",
             "open_inno_mat": "open_inno",
+            "humanities_fit": "humanities_fit",
         }
         for col, scorer_name in col_to_scorer.items():
             val = r.get(col)

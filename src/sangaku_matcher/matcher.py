@@ -26,6 +26,7 @@ from sangaku_matcher.scoring.abs_cap import AbsCapScorer
 from sangaku_matcher.scoring.past_ties import PastTiesScorer
 from sangaku_matcher.scoring.future_option import FutureOptionScorer
 from sangaku_matcher.scoring.open_inno import OpenInnoScorer
+from sangaku_matcher.scoring.humanities_fit import HumanitiesFitScorer
 from sangaku_matcher.seeds import Seed
 
 logger = logging.getLogger(__name__)
@@ -71,7 +72,8 @@ def _load_companies(conn) -> list[dict]:
         """SELECT edinet_code, name, industry, revenue, rd_expense, rd_intensity,
                   rd_text_vector, needs_vector, open_inno_score,
                   employees, market_cap,
-                  LENGTH(rd_text) AS rd_text_len
+                  LENGTH(rd_text) AS rd_text_len,
+                  humanities_needs_vector, humanities_needs_text
            FROM companies ORDER BY rd_expense DESC"""
     ).fetchall()
     return [dict(r) for r in rows]
@@ -115,6 +117,11 @@ def _infer_mode(features: dict[str, FeatureResult]) -> str:
     fo = features.get("future_option", FeatureResult(0, "")).value
     oi = features.get("open_inno", FeatureResult(0, "")).value
 
+    hf = features.get("humanities_fit", FeatureResult(0, "")).value
+
+    # High humanities fit + low tech → Social collaboration
+    if hf > 0.5 and tp < 0.3:
+        return "social_collaboration"
     # High tech overlap + high need fit → License
     if tp > 0.7 and nf > 0.5:
         return "license"
@@ -144,6 +151,7 @@ MODE_LABELS = {
     "license": "ライセンス供与",
     "contract": "受託研究",
     "long_term": "中長期探索型連携",
+    "social_collaboration": "社会課題連携",
 }
 
 
@@ -155,13 +163,14 @@ def _generate_hypotheses(
     features: dict[str, FeatureResult],
     mode: str,
 ) -> tuple[list[CollaborationHypothesis], str]:
-    """Generate collaboration hypotheses from 6-dimensional score profile."""
+    """Generate collaboration hypotheses from 7-dimensional score profile."""
     tp = features.get("tech_prox", FeatureResult(0, ""))
     nf = features.get("need_fit", FeatureResult(0, ""))
     ac = features.get("abs_cap", FeatureResult(0, ""))
     pt = features.get("past_ties", FeatureResult(0, ""))
     fo = features.get("future_option", FeatureResult(0, ""))
     oi = features.get("open_inno", FeatureResult(0, ""))
+    hf = features.get("humanities_fit", FeatureResult(0, ""))
 
     hypotheses: list[CollaborationHypothesis] = []
 
@@ -256,6 +265,31 @@ def _generate_hypotheses(
             rationale="Chesbrough: OI成熟企業は外部シーズの受容性が構造的に高い",
         ))
 
+    # Humanities collaboration hypothesis
+    if hf.value > 0.4:
+        hypotheses.append(CollaborationHypothesis(
+            title=f"{company_name}との人文社会科学的知見を活かした連携",
+            description=(
+                f"人文社会科学系ニーズとの高い親和性（{hf.value:.2f}）。"
+                f"{hf.rationale} "
+                f"技術開発とは異なる視点から、社会洞察・未来洞察・"
+                f"組織文化・倫理等の領域での知的連携が期待できる。"
+            ),
+            collab_type="joint_research",
+            rationale="SHARPE/Structural Holes: 人文社会科学と産業界の知識仲介による価値創造",
+        ))
+    elif hf.value > 0.25:
+        hypotheses.append(CollaborationHypothesis(
+            title=f"{company_name}との社会課題視点での探索的連携",
+            description=(
+                f"人文系ニーズとの中程度の親和性（{hf.value:.2f}）。"
+                f"直接的な技術連携に加え、社会的文脈の理解や"
+                f"ステークホルダー対話の設計など、補完的な連携が考えられる。"
+            ),
+            collab_type="long_term",
+            rationale="Mode 2知識生産: 社会的文脈埋め込み型の超学際的連携",
+        ))
+
     # Cross-dimensional combination hypothesis
     if nf.value > 0.3 and oi.value > 0.3 and ac.value > 0.3:
         hypotheses.append(CollaborationHypothesis(
@@ -334,6 +368,8 @@ def run_match(seed: Seed, top_n: int | None = None) -> MatchResult:
     open_inno.set_collaboration_data(collab_data)
     open_inno.set_industry_stats(industry_stats)
 
+    humanities_fit = HumanitiesFitScorer()
+
     scorers = [
         (tech_prox, settings.w_tech_prox),
         (need_fit, settings.w_need_fit),
@@ -341,6 +377,7 @@ def run_match(seed: Seed, top_n: int | None = None) -> MatchResult:
         (past_ties, settings.w_past_ties),
         (future_option, settings.w_future_option),
         (open_inno, settings.w_open_inno),
+        (humanities_fit, settings.w_humanities_fit),
     ]
 
     scored: list[tuple[float, dict, dict[str, FeatureResult]]] = []
@@ -416,8 +453,9 @@ def _save_match_result(result: MatchResult) -> None:
                 """INSERT INTO matches
                    (seed_id, edinet_code, rank, total_score,
                     tech_prox, abs_cap, need_fit, past_ties,
-                    trl_compat, open_inno_mat, rationale, recommended_mode, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    trl_compat, open_inno_mat, humanities_fit,
+                    rationale, recommended_mode, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     result.seed.seed_id,
                     rc.edinet_code,
@@ -427,8 +465,9 @@ def _save_match_result(result: MatchResult) -> None:
                     fs.get("abs_cap", FeatureResult(0, "")).value,
                     fs.get("need_fit", FeatureResult(0, "")).value,
                     fs.get("past_ties", FeatureResult(0, "")).value,
-                    fs.get("future_option", FeatureResult(0, "")).value,  # stored in trl_compat col
+                    fs.get("future_option", FeatureResult(0, "")).value,
                     fs.get("open_inno", FeatureResult(0, "")).value,
+                    fs.get("humanities_fit", FeatureResult(0, "")).value,
                     " | ".join(f.rationale for f in fs.values() if f.rationale),
                     rc.recommended_mode,
                     result.executed_at,
