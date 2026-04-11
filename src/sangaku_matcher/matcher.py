@@ -64,7 +64,7 @@ class MatchResult:
 
 
 def _load_companies(conn) -> list[dict]:
-    """Load all companies with columns needed for 6 scorers.
+    """Load all companies with columns needed for 7 scorers.
 
     Uses LENGTH(rd_text) instead of full rd_text to save memory.
     """
@@ -73,7 +73,8 @@ def _load_companies(conn) -> list[dict]:
                   rd_text_vector, needs_vector, open_inno_score,
                   employees, market_cap,
                   LENGTH(rd_text) AS rd_text_len,
-                  humanities_needs_vector, humanities_needs_text
+                  humanities_needs_vector, humanities_needs_text,
+                  tech_needs_vector, tech_needs_text
            FROM companies ORDER BY rd_expense DESC"""
     ).fetchall()
     return [dict(r) for r in rows]
