@@ -110,17 +110,23 @@ def _load_collaboration_data(conn) -> dict[str, dict[str, dict]]:
 
 
 def _infer_mode(features: dict[str, FeatureResult]) -> str:
-    """Infer collaboration mode from 6-dimensional score profile."""
+    """Infer collaboration mode from 7-dimensional score profile.
+
+    Redesigned to give equal weight to humanities/social dimensions,
+    reflecting Mode 2 knowledge production and transdisciplinary collaboration.
+    """
     tp = features.get("tech_prox", FeatureResult(0, "")).value
     nf = features.get("need_fit", FeatureResult(0, "")).value
     ac = features.get("abs_cap", FeatureResult(0, "")).value
     pt = features.get("past_ties", FeatureResult(0, "")).value
     fo = features.get("future_option", FeatureResult(0, "")).value
     oi = features.get("open_inno", FeatureResult(0, "")).value
-
     hf = features.get("humanities_fit", FeatureResult(0, "")).value
 
-    # High humanities fit + low tech → Social collaboration
+    # Transdisciplinary: both tech AND humanities strong → integrated collaboration
+    if nf > 0.4 and hf > 0.5:
+        return "transdisciplinary"
+    # Humanities-led: strong humanities, weak tech → social collaboration
     if hf > 0.5 and tp < 0.3:
         return "social_collaboration"
     # High tech overlap + high need fit → License
@@ -129,7 +135,10 @@ def _infer_mode(features: dict[str, FeatureResult]) -> str:
     # Strong need alignment + capability + trust → Joint Research
     if nf > 0.4 and ac > 0.4 and pt > 0.2:
         return "joint_research"
-    # High abs_cap + OI maturity but modest tech/need fit → Contract
+    # Humanities + OI → social innovation partnership
+    if hf > 0.4 and oi > 0.4:
+        return "social_collaboration"
+    # High abs_cap + OI maturity but modest tech → Contract
     if ac > 0.5 and oi > 0.4 and tp < 0.5:
         return "contract"
     # High future option value → Long-term exploratory
@@ -139,10 +148,10 @@ def _infer_mode(features: dict[str, FeatureResult]) -> str:
     if oi > 0.5 and pt > 0.3:
         return "joint_research"
     # Fallback on aggregate
-    total = tp + nf + ac + pt + fo + oi
-    if total > 2.5:
+    total = tp + nf + ac + pt + fo + oi + hf
+    if total > 3.0:
         return "joint_research"
-    if total > 1.5:
+    if total > 2.0:
         return "contract"
     return "long_term"
 
@@ -153,6 +162,7 @@ MODE_LABELS = {
     "contract": "受託研究",
     "long_term": "中長期探索型連携",
     "social_collaboration": "社会課題連携",
+    "transdisciplinary": "超学際連携",
 }
 
 
@@ -291,6 +301,21 @@ def _generate_hypotheses(
             rationale="Mode 2知識生産: 社会的文脈埋め込み型の超学際的連携",
         ))
 
+    # Transdisciplinary hypothesis: tech AND humanities both strong
+    if nf.value > 0.3 and hf.value > 0.4:
+        hypotheses.append(CollaborationHypothesis(
+            title=f"{company_name}との超学際的連携（技術×社会知の融合）",
+            description=(
+                f"技術ニーズ（{nf.value:.2f}）と人文社会科学的ニーズ（{hf.value:.2f}）"
+                f"の双方が高く、技術開発と社会的価値創造を同時に追求する"
+                f"超学際的（transdisciplinary）連携が期待できる。"
+                f"技術的課題の解決と社会的インパクトの最大化を統合的に設計する"
+                f"Mode 2型の知識生産が可能なケース。"
+            ),
+            collab_type="transdisciplinary",
+            rationale="Gibbons (1994) Mode 2: 応用文脈での超学際的知識生産。技術と人文の交差が最大の革新を生む",
+        ))
+
     # Cross-dimensional combination hypothesis
     if nf.value > 0.3 and oi.value > 0.3 and ac.value > 0.3:
         hypotheses.append(CollaborationHypothesis(
@@ -329,11 +354,12 @@ def _generate_hypotheses(
         outlook = "直接的な連携ポイントは限られるが、中長期的な検討余地あり"
 
     overall = (
-        f"{company_name}（{industry}）との連携可能性を五層価値モデルで評価しました"
+        f"{company_name}（{industry}）との連携可能性を七次元価値モデルで評価しました"
         f"（総合: {total_score:.2f}）。"
-        f"技術近接 {tp.value:.2f}、ニーズ適合 {nf.value:.2f}、"
-        f"知識吸収 {ac.value:.2f}、関係資本 {pt.value:.2f}、"
-        f"将来価値 {fo.value:.2f}、エコシステム {oi.value:.2f}。"
+        f"技術近接 {tp.value:.2f}、技術ニーズ {nf.value:.2f}、"
+        f"人文系 {hf.value:.2f}、知識吸収 {ac.value:.2f}、"
+        f"関係資本 {pt.value:.2f}、将来価値 {fo.value:.2f}、"
+        f"エコシステム {oi.value:.2f}。"
         f"連携可能性は{level}と評価され、{outlook}。"
         f"推奨連携形態: {MODE_LABELS.get(mode, mode)}。"
     )
@@ -371,6 +397,10 @@ def run_match(seed: Seed, top_n: int | None = None) -> MatchResult:
 
     humanities_fit = HumanitiesFitScorer()
 
+    # Pre-compute similarity distributions for z-score normalization
+    need_fit.precompute_distribution(seed.semantic_vector, companies)
+    humanities_fit.precompute_distribution(seed.semantic_vector, companies)
+
     scorers = [
         (tech_prox, settings.w_tech_prox),
         (need_fit, settings.w_need_fit),
@@ -392,6 +422,30 @@ def run_match(seed: Seed, top_n: int | None = None) -> MatchResult:
             result = scorer.score(seed.semantic_vector, co)
             features[scorer.name] = result
             total += weight * result.value
+
+        # Cross-dimensional synergy bonus (Mode 2 / transdisciplinary value)
+        # Rewards companies where BOTH tech and humanities dimensions are strong,
+        # capturing the "boundary-spanning" value that pure linear sums miss.
+        if settings.w_synergy > 0:
+            nf_val = features.get("need_fit", FeatureResult(0, "")).value
+            hf_val = features.get("humanities_fit", FeatureResult(0, "")).value
+            oi_val = features.get("open_inno", FeatureResult(0, "")).value
+            # Geometric mean rewards balanced strength across dimensions
+            synergy = (nf_val * hf_val) ** 0.5
+            # OI readiness amplifies synergy (ecosystem enables cross-domain work)
+            if oi_val > 0.3:
+                synergy *= 1.0 + 0.2 * oi_val
+            synergy = min(1.0, synergy)
+            features["synergy"] = FeatureResult(
+                value=round(synergy, 4),
+                rationale=(
+                    f"技術ニーズ（{nf_val:.2f}）×人文系ニーズ（{hf_val:.2f}）の"
+                    f"領域横断的シナジー。"
+                    + (f"OI体制（{oi_val:.2f}）による増幅効果あり。" if oi_val > 0.3 else "")
+                ),
+            )
+            total += settings.w_synergy * synergy
+
         scored.append((total, co, features))
 
     scored.sort(key=lambda x: x[0], reverse=True)
@@ -454,9 +508,9 @@ def _save_match_result(result: MatchResult) -> None:
                 """INSERT INTO matches
                    (seed_id, edinet_code, rank, total_score,
                     tech_prox, abs_cap, need_fit, past_ties,
-                    trl_compat, open_inno_mat, humanities_fit,
+                    trl_compat, open_inno_mat, humanities_fit, synergy,
                     rationale, recommended_mode, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     result.seed.seed_id,
                     rc.edinet_code,
@@ -469,6 +523,7 @@ def _save_match_result(result: MatchResult) -> None:
                     fs.get("future_option", FeatureResult(0, "")).value,
                     fs.get("open_inno", FeatureResult(0, "")).value,
                     fs.get("humanities_fit", FeatureResult(0, "")).value,
+                    fs.get("synergy", FeatureResult(0, "")).value,
                     " | ".join(f.rationale for f in fs.values() if f.rationale),
                     rc.recommended_mode,
                     result.executed_at,

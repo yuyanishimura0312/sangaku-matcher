@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS matches (
     trl_compat      REAL,
     open_inno_mat   REAL,
     humanities_fit  REAL,
+    synergy         REAL,
     rationale       TEXT,
     recommended_mode TEXT,
     created_at      TEXT NOT NULL,

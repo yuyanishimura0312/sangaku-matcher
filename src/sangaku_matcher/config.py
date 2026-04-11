@@ -37,14 +37,18 @@ class Settings(BaseSettings):
     # --- Embedding Model ---
     embedding_model: str = "intfloat/multilingual-e5-small"
 
-    # --- Scoring Weights (Six-Layer Value Model: 7 features, sum=1.0) ---
-    w_tech_prox: float = 0.20       # Layer 1: Technical Value
-    w_need_fit: float = 0.15        # Layer 1: Technical Value (need-pull)
-    w_abs_cap: float = 0.15         # Layer 3: Knowledge Value
-    w_open_inno: float = 0.12       # Layer 5: Ecosystem Value
-    w_past_ties: float = 0.08       # Layer 2: Relational Value
-    w_future_option: float = 0.10   # Layer 4: Future Value
-    w_humanities_fit: float = 0.20  # Layer 6: Humanities & Social Science Value
+    # --- Scoring Weights (Seven-Dimension Value Model: 7 features + synergy, sum=1.0) ---
+    # Redesigned based on Nooteboom (2007), SHARPE framework, and Mode 2 theory.
+    # Balances technical matching (40%) with social/humanities value (25%)
+    # and relational/ecosystem readiness (25%), plus cross-dimensional synergy (10%).
+    w_tech_prox: float = 0.15       # Dim 1: Technical Proximity (inverted-U)
+    w_need_fit: float = 0.15        # Dim 2: Tech Needs Fit (contextual vector)
+    w_abs_cap: float = 0.10         # Dim 3: Absorptive Capacity
+    w_open_inno: float = 0.10       # Dim 4: Ecosystem Readiness
+    w_past_ties: float = 0.05       # Dim 5: Relational Capital
+    w_future_option: float = 0.10   # Dim 6: Future Option Value
+    w_humanities_fit: float = 0.25  # Dim 7: Humanities & Social Science Value
+    w_synergy: float = 0.10         # Cross-dimensional synergy bonus
 
     # --- Matching ---
     default_top_n: int = 10

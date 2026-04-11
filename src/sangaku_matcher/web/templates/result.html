@@ -41,6 +41,7 @@
             <th scope="col">将来価値</th>
             <th scope="col">OI</th>
             <th scope="col">人文系</th>
+            <th scope="col">融合</th>
             <th scope="col">推奨形態</th>
         </tr>
     </thead>
@@ -61,9 +62,10 @@
             <td>{{ "%.2f"|format(rc.feature_scores.get("future_option", {"value": 0}).value if rc.feature_scores.get("future_option") else 0) }}</td>
             <td>{{ "%.2f"|format(rc.feature_scores.get("open_inno", {"value": 0}).value if rc.feature_scores.get("open_inno") else 0) }}</td>
             <td>{{ "%.2f"|format(rc.feature_scores.get("humanities_fit", {"value": 0}).value if rc.feature_scores.get("humanities_fit") else 0) }}</td>
+            <td>{{ "%.2f"|format(rc.feature_scores.get("synergy", {"value": 0}).value if rc.feature_scores.get("synergy") else 0) }}</td>
             <td>
                 <span class="badge" style="background:var(--color-accent-light);color:var(--color-accent-dark)">
-                    {{ {"joint_research": "共同研究", "license": "ライセンス", "contract": "受託研究", "long_term": "中長期探索型連携", "social_collaboration": "社会課題連携"}.get(rc.recommended_mode, rc.recommended_mode) }}
+                    {{ {"joint_research": "共同研究", "license": "ライセンス", "contract": "受託研究", "long_term": "中長期探索型連携", "social_collaboration": "社会課題連携", "transdisciplinary": "超学際連携"}.get(rc.recommended_mode, rc.recommended_mode) }}
                 </span>
             </td>
         </tr>
@@ -95,13 +97,14 @@
         <h5 style="font-size:0.85rem;font-weight:600;margin-bottom:0.75rem;color:var(--color-text-muted)">各観点の評価</h5>
         <div class="row mb-4">
             {% set feature_meta = {
-                "tech_prox": {"label": "技術近接性", "weight": "0.20", "desc": "シーズと企業のR&D技術領域の類似度（中程度の距離が最適）"},
-                "need_fit": {"label": "ニーズ適合", "weight": "0.15", "desc": "企業の推定技術ニーズとシーズの一致度"},
-                "abs_cap": {"label": "知識吸収能力", "weight": "0.15", "desc": "外部知識を取り込み活用する能力（R&D投資＋認知的近接性）"},
-                "past_ties": {"label": "関係資本", "weight": "0.08", "desc": "大学との連携実績（量・多様性・最新度）"},
+                "tech_prox": {"label": "技術近接性", "weight": "0.15", "desc": "シーズと企業のR&D技術領域の類似度（中程度の距離が最適）"},
+                "need_fit": {"label": "技術ニーズ適合", "weight": "0.15", "desc": "有報から抽出した文脈型技術ニーズとシーズの意味的一致度"},
+                "abs_cap": {"label": "知識吸収能力", "weight": "0.10", "desc": "外部知識を取り込み活用する能力（R&D投資＋認知的近接性）"},
+                "past_ties": {"label": "関係資本", "weight": "0.05", "desc": "大学との連携実績（量・多様性・最新度）"},
                 "future_option": {"label": "将来価値", "weight": "0.10", "desc": "異分野融合によるセレンディピティとリアルオプション"},
-                "open_inno": {"label": "エコシステム", "weight": "0.12", "desc": "オープンイノベーション成熟度とエコシステム貢献度"},
-                "humanities_fit": {"label": "人文社会科学", "weight": "0.20", "desc": "社会洞察・未来洞察・倫理・組織文化・コミュニティ等の人文系連携ニーズとの親和性"}
+                "open_inno": {"label": "エコシステム", "weight": "0.10", "desc": "オープンイノベーション成熟度とエコシステム貢献度"},
+                "humanities_fit": {"label": "人文社会科学", "weight": "0.25", "desc": "社会洞察・未来洞察・倫理・組織文化・コミュニティ等の人文系連携ニーズとの親和性"},
+                "synergy": {"label": "領域横断シナジー", "weight": "0.10", "desc": "技術ニーズと人文系ニーズの交差による超学際的価値（Mode 2知識生産）"}
             } %}
             {% for fname, fr in rc.feature_scores.items() %}
             {% set meta = feature_meta.get(fname, {"label": fname, "weight": "?", "desc": ""}) %}
