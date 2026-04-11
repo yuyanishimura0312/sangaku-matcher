@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}テーマ体系 -- sangaku-matcher{% endblock %}
+{% block content %}
+<div style="max-width:960px;margin:0 auto">
+
+<h2>人文社会科学系 連携テーマ体系</h2>
+<p style="font-size:0.88rem;color:var(--color-text-muted);line-height:1.8;margin-bottom:1.5rem">
+    約3,800社の有価証券報告書から抽出した19,495件の人文社会科学系連携ニーズ・ナラティブを、GTAに着想を得たボトムアップ分析で構造化したテーマ体系です。8つの大テーマと33の小テーマで構成され、研究者の専門分野と企業の連携ニーズをマッチングする基盤として機能します。
+</p>
+
+<div class="d-flex gap-3 flex-wrap mb-4">
+    <div style="background:var(--color-muted-bg);padding:0.6rem 1rem;border-radius:8px;text-align:center">
+        <div style="font-size:1.3rem;font-weight:700;color:var(--color-accent)">8</div>
+        <div style="font-size:0.75rem;color:var(--color-text-subtle)">大テーマ</div>
+    </div>
+    <div style="background:var(--color-muted-bg);padding:0.6rem 1rem;border-radius:8px;text-align:center">
+        <div style="font-size:1.3rem;font-weight:700;color:var(--color-accent)">33</div>
+        <div style="font-size:0.75rem;color:var(--color-text-subtle)">小テーマ</div>
+    </div>
+    <div style="background:var(--color-muted-bg);padding:0.6rem 1rem;border-radius:8px;text-align:center">
+        <div style="font-size:1.3rem;font-weight:700">{{ "{:,}".format(company_count) }}</div>
+        <div style="font-size:0.75rem;color:var(--color-text-subtle)">対象企業数</div>
+    </div>
+    <div style="background:var(--color-muted-bg);padding:0.6rem 1rem;border-radius:8px;text-align:center">
+        <div style="font-size:1.3rem;font-weight:700">19,495</div>
+        <div style="font-size:0.75rem;color:var(--color-text-subtle)">分析ナラティブ数</div>
+    </div>
+</div>
+
+{% set current_major = namespace(id="") %}
+{% for t in themes %}
+    {% if t.major_id != current_major.id %}
+        {% if current_major.id != "" %}
+            </tbody></table></div></div>
+        {% endif %}
+        {% set current_major.id = t.major_id %}
+        <div class="card mb-4">
+            <div class="card-header" style="font-weight:600">
+                <span style="display:inline-block;width:2rem;height:2rem;line-height:2rem;text-align:center;background:var(--color-accent);color:#fff;border-radius:50%;font-size:0.85rem;margin-right:0.5rem">{{ t.major_id }}</span>
+                {{ t.major_name }}
+            </div>
+            <div class="card-body" style="padding:0">
+                <table class="table mb-0" style="font-size:0.85rem">
+                    <thead>
+                        <tr style="background:var(--color-muted-bg)">
+                            <th style="width:3.5rem">ID</th>
+                            <th>テーマ</th>
+                            <th>キーワード</th>
+                            <th style="width:6rem;text-align:right">該当企業数</th>
+                            <th style="width:5rem;text-align:right">近接度幅</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+    {% endif %}
+                        <tr>
+                            <td style="font-weight:600;color:var(--color-accent)">{{ t.theme_id }}</td>
+                            <td style="font-weight:500">{{ t.name }}</td>
+                            <td>
+                                {% for kw in t.parsed_keywords %}
+                                    <span class="badge" style="background:var(--color-muted-bg);color:var(--color-text-muted);font-size:0.72rem;font-weight:400;margin:0.1rem 0">{{ kw }}</span>
+                                {% endfor %}
+                            </td>
+                            <td style="text-align:right">
+                                <strong>{{ "{:,}".format(t.match_count) }}</strong>
+                                <span style="font-size:0.72rem;color:var(--color-text-subtle)">社</span>
+                            </td>
+                            <td style="text-align:right;font-size:0.78rem;color:var(--color-text-subtle)">
+                                {{ "%.2f"|format(t.max_prox - t.avg_prox + 0.0) }}
+                            </td>
+                        </tr>
+{% endfor %}
+{% if current_major.id != "" %}
+    </tbody></table></div></div>
+{% endif %}
+
+<div class="card mb-4">
+    <div class="card-header">テーマ体系について</div>
+    <div class="card-body" style="font-size:0.85rem;line-height:1.8">
+        <h5 style="font-size:0.9rem;font-weight:600;margin-bottom:0.75rem">分析手法</h5>
+        <p>有価証券報告書の「経営方針、経営環境及び対処すべき課題等」セクションから、Claude Haiku 4.5を用いて人文社会科学系連携ニーズを個別のナラティブとして抽出しました。抽出された19,495件のナラティブに対して、テキスト中の社会的テーマ関連用語を頻度分析し、出現パターンからボトムアップでテーマ体系を構築しました。Grounded Theory Analysis（GTA）の理論生成アプローチに着想を得た手法です。</p>
+
+        <h5 style="font-size:0.9rem;font-weight:600;margin-top:1.25rem;margin-bottom:0.75rem">スコアリングへの活用</h5>
+        <p>マッチング時、研究者が入力したシーズ（研究テーマ）のベクトルと33テーマの代表ベクトルのコサイン類似度を算出し、シーズに近いテーマを動的に重み付けします。各企業は33テーマそれぞれへの近接度スコアを持っており、z-score正規化によって全企業平均と比較した相対的な強さとして評価されます。</p>
+        <p>これにより、例えば「AI倫理」の研究者はテーマD1への近接度が高い企業を、「コミュニティデザイン」の研究者はテーマA2への近接度が高い企業を、それぞれ優先的に発見できます。</p>
+
+        <h5 style="font-size:0.9rem;font-weight:600;margin-top:1.25rem;margin-bottom:0.75rem">「該当企業数」の読み方</h5>
+        <p>各テーマの「該当企業数」は、そのテーマに関連するナラティブを1件以上保有する企業数（コサイン類似度0.85以上）です。B4「働き方改革・労働環境」は3,514社と最も多くの企業に共通する課題であり、G1「医療倫理・臨床倫理」は498社と特定業種に限定されるテーマです。</p>
+    </div>
+</div>
+
+</div>
+{% endblock %}

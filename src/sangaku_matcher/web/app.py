@@ -382,6 +382,40 @@ async def needs_about(request: Request):
     })
 
 
+@app.get("/themes", response_class=HTMLResponse)
+async def themes_page(request: Request):
+    """Display the 33-theme taxonomy with per-theme statistics."""
+    with connect(settings.matcher_db_path) as conn:
+        # Check if taxonomy tables exist
+        tables = {r["name"] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )}
+        themes_data = []
+        if "taxonomy_themes" in tables and "company_taxonomy_proximity" in tables:
+            rows = conn.execute("""
+                SELECT t.theme_id, t.major_id, t.major_name, t.name, t.keywords,
+                       ROUND(AVG(p.proximity), 3) as avg_prox,
+                       ROUND(MAX(p.proximity), 3) as max_prox,
+                       SUM(CASE WHEN p.narrative_count > 0 THEN 1 ELSE 0 END) as match_count
+                FROM taxonomy_themes t
+                JOIN company_taxonomy_proximity p ON t.theme_id = p.theme_id
+                GROUP BY t.theme_id
+                ORDER BY t.major_id, t.theme_id
+            """).fetchall()
+            for r in rows:
+                d = dict(r)
+                try:
+                    d["parsed_keywords"] = json.loads(d.get("keywords", "[]"))
+                except (json.JSONDecodeError, TypeError):
+                    d["parsed_keywords"] = []
+                themes_data.append(d)
+        company_count = conn.execute("SELECT COUNT(*) as c FROM companies").fetchone()["c"]
+    return templates.TemplateResponse(request, "themes.html", {
+        "themes": themes_data,
+        "company_count": company_count,
+    })
+
+
 @app.get("/companies", response_class=HTMLResponse)
 async def companies_page(
     request: Request,
