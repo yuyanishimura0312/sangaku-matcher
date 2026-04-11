@@ -1,13 +1,11 @@
-"""ThemeFit scorer — GTA-based bottom-up theme matching.
+"""ThemeFit scorer — GTA-based bottom-up theme matching with 33-theme taxonomy.
 
-Instead of matching against a single composite humanities vector,
-this scorer:
-1. Finds which emergent themes the seed is closest to
-2. Looks up each company's proximity to those themes
-3. Uses z-score normalization within each theme for discrimination
+Uses a structured 2-level taxonomy (8 major / 33 sub-themes) derived from
+bottom-up analysis of 19,495 individual narratives across 3,828 companies.
 
-This captures the specific domain of humanities collaboration need,
-e.g., "organizational culture" vs "community design" vs "ethics".
+For each seed, computes similarity to all 33 theme centroids, then looks up
+each company's proximity to those themes. Uses z-score normalization within
+each theme for discrimination.
 
 Based on:
 - Glaser & Strauss (1967): Grounded Theory — emergent categories from data
@@ -22,47 +20,48 @@ from sangaku_matcher.scoring import FeatureResult
 
 
 class ThemeFitScorer:
-    """Score companies based on theme-level proximity to seed."""
+    """Score companies based on 33-theme taxonomy proximity to seed."""
 
-    name = "humanities_fit"  # Replaces the old HumanitiesFit scorer
+    name = "humanities_fit"
 
     def __init__(self):
         self._themes: list[dict] | None = None
-        self._company_proximities: dict[str, dict[int, float]] | None = None
-        self._theme_stats: dict[int, tuple[float, float]] | None = None
+        self._company_proximities: dict[str, dict[str, float]] | None = None
+        self._theme_stats: dict[str, tuple[float, float]] | None = None
         self._seed_theme_sims: np.ndarray | None = None
 
     def load_themes(self, conn) -> None:
-        """Load pre-computed themes and company-theme proximities."""
-        import sqlite3
-
-        # Check if tables exist
+        """Load taxonomy themes and company-theme proximities."""
         tables = {r[0] for r in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
         )}
-        if "humanities_themes" not in tables or "company_theme_proximity" not in tables:
-            self._themes = None
-            return
 
-        # Load themes with centroids
+        # Prefer 33-theme taxonomy, fall back to HDBSCAN clusters
+        if "taxonomy_themes" in tables and "company_taxonomy_proximity" in tables:
+            self._load_taxonomy(conn)
+        elif "humanities_themes" in tables and "company_theme_proximity" in tables:
+            self._load_hdbscan(conn)
+        else:
+            self._themes = None
+
+    def _load_taxonomy(self, conn) -> None:
+        """Load 33-theme structured taxonomy."""
         rows = conn.execute(
-            "SELECT theme_id, label, narrative_count, company_count, centroid "
-            "FROM humanities_themes ORDER BY theme_id"
+            "SELECT theme_id, major_id, major_name, name, centroid "
+            "FROM taxonomy_themes ORDER BY theme_id"
         ).fetchall()
         self._themes = []
         for r in rows:
             centroid = np.frombuffer(r["centroid"], dtype=np.float32)
             self._themes.append({
                 "theme_id": r["theme_id"],
-                "label": r["label"],
-                "count": r["narrative_count"],
-                "companies": r["company_count"],
+                "label": r["name"],
+                "major": r["major_name"],
                 "centroid": centroid,
             })
 
-        # Load company-theme proximities
         prox_rows = conn.execute(
-            "SELECT edinet_code, theme_id, proximity FROM company_theme_proximity"
+            "SELECT edinet_code, theme_id, proximity FROM company_taxonomy_proximity"
         ).fetchall()
         self._company_proximities = {}
         for r in prox_rows:
@@ -71,7 +70,37 @@ class ThemeFitScorer:
                 self._company_proximities[ec] = {}
             self._company_proximities[ec][r["theme_id"]] = r["proximity"]
 
-        # Pre-compute per-theme proximity stats for z-score normalization
+        self._compute_theme_stats()
+
+    def _load_hdbscan(self, conn) -> None:
+        """Fallback: load HDBSCAN cluster themes."""
+        rows = conn.execute(
+            "SELECT theme_id, label, centroid FROM humanities_themes ORDER BY theme_id"
+        ).fetchall()
+        self._themes = []
+        for r in rows:
+            centroid = np.frombuffer(r["centroid"], dtype=np.float32)
+            self._themes.append({
+                "theme_id": str(r["theme_id"]),
+                "label": r["label"],
+                "major": "",
+                "centroid": centroid,
+            })
+
+        prox_rows = conn.execute(
+            "SELECT edinet_code, theme_id, proximity FROM company_theme_proximity"
+        ).fetchall()
+        self._company_proximities = {}
+        for r in prox_rows:
+            ec = r["edinet_code"]
+            if ec not in self._company_proximities:
+                self._company_proximities[ec] = {}
+            self._company_proximities[ec][str(r["theme_id"])] = r["proximity"]
+
+        self._compute_theme_stats()
+
+    def _compute_theme_stats(self) -> None:
+        """Pre-compute per-theme proximity stats for z-score normalization."""
         from collections import defaultdict
         theme_vals = defaultdict(list)
         for ec_prox in self._company_proximities.values():
@@ -88,12 +117,12 @@ class ThemeFitScorer:
         if not self._themes:
             return
         centroids = np.array([t["centroid"] for t in self._themes])
-        self._seed_theme_sims = centroids @ (seed_vector / np.linalg.norm(seed_vector))
+        sv_norm = seed_vector / np.linalg.norm(seed_vector)
+        self._seed_theme_sims = centroids @ sv_norm
 
     def score(self, seed_vector: np.ndarray, company: dict) -> FeatureResult:
         ec = company.get("edinet_code", "")
 
-        # Fallback if theme data not loaded
         if not self._themes or self._company_proximities is None:
             return self._fallback_score(seed_vector, company)
 
@@ -106,7 +135,6 @@ class ThemeFitScorer:
         company_prox = self._company_proximities[ec]
 
         # Weighted score: sum of (seed-theme similarity × company-theme z-score)
-        # This rewards companies that are strong in the themes the seed cares about
         total_score = 0.0
         total_weight = 0.0
         top_themes = []
@@ -116,13 +144,11 @@ class ThemeFitScorer:
             seed_sim = self._seed_theme_sims[i]
             company_raw = company_prox.get(tid, 0.0)
 
-            # Z-score normalize company proximity within this theme
-            mean, std = self._theme_stats.get(tid, (0.9, 0.01))
+            # Z-score normalize
+            mean, std = self._theme_stats.get(tid, (0.85, 0.01))
             z = (company_raw - mean) / std
-            # Sigmoid → [0, 1]
             company_score = 1.0 / (1.0 + np.exp(-z))
 
-            # Seed's interest in this theme as weight
             weight = max(0.0, seed_sim)
             total_score += weight * company_score
             total_weight += weight
@@ -140,14 +166,13 @@ class ThemeFitScorer:
         # Build rationale with top matching themes
         top_themes.sort(key=lambda x: x[1] * x[2], reverse=True)
         if top_themes:
-            theme_strs = [f"{t[0]}（企業{t[1]:.2f}×関連度{t[2]:.2f}）"
-                          for t in top_themes[:3]]
+            theme_strs = [f"{t[0]}({t[1]:.0%})" for t in top_themes[:3]]
             rationale = (
-                f"テーマ別近接度分析（{len(self._themes)}テーマ）。"
-                f"高親和テーマ: {'; '.join(theme_strs)}。"
+                f"{len(self._themes)}テーマ分析。"
+                f"高親和: {'; '.join(theme_strs)}。"
             )
         else:
-            rationale = f"テーマ別分析（{len(self._themes)}テーマ）で顕著な親和性なし。"
+            rationale = f"{len(self._themes)}テーマ分析で顕著な親和性なし。"
 
         return FeatureResult(value=round(final_score, 4), rationale=rationale)
 
