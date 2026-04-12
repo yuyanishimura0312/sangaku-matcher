@@ -413,7 +413,7 @@ async def themes_page(request: Request):
 
         # Tech taxonomy (from JSON file)
         tech_taxonomy_data = []
-        tech_path = Path(__file__).parent.parent.parent.parent / "data" / "tech_taxonomy.json"
+        tech_path = settings.matcher_db_path.parent / "tech_taxonomy.json"
         if tech_path.exists():
             with open(tech_path) as f:
                 tech_taxonomy_data = json.load(f).get("themes", [])
@@ -424,7 +424,7 @@ async def themes_page(request: Request):
 
         # Business ambition taxonomy (from JSON file)
         ambition_data = []
-        ambition_path = Path(__file__).parent.parent.parent.parent / "data" / "ambition_taxonomy.json"
+        ambition_path = settings.matcher_db_path.parent / "ambition_taxonomy.json"
         if ambition_path.exists():
             with open(ambition_path) as f:
                 ambition_data = json.load(f).get("themes", [])
