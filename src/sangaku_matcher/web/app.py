@@ -411,6 +411,17 @@ async def themes_page(request: Request):
                     d["parsed_keywords"] = []
                 themes_data.append(d)
 
+        # Tech taxonomy (from JSON file)
+        tech_taxonomy_data = []
+        tech_path = Path(__file__).parent.parent.parent.parent / "data" / "tech_taxonomy.json"
+        if tech_path.exists():
+            with open(tech_path) as f:
+                tech_taxonomy_data = json.load(f).get("themes", [])
+
+        tech_needs_count = conn.execute(
+            "SELECT COUNT(*) as c FROM companies WHERE tech_needs_at IS NOT NULL"
+        ).fetchone()["c"]
+
         # Business ambition taxonomy (from JSON file)
         ambition_data = []
         ambition_path = Path(__file__).parent.parent.parent.parent / "data" / "ambition_taxonomy.json"
@@ -448,6 +459,8 @@ async def themes_page(request: Request):
         company_count = conn.execute("SELECT COUNT(*) as c FROM companies").fetchone()["c"]
     return templates.TemplateResponse(request, "themes.html", {
         "themes": themes_data,
+        "tech_themes": tech_taxonomy_data,
+        "tech_needs_count": tech_needs_count,
         "ambition_themes": ambition_data,
         "ambition_count": ambition_count,
         "ambition_avg": ambition_avg,

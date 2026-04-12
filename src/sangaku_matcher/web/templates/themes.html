@@ -89,6 +89,72 @@
 </div>
 
 {# ================================================================ #}
+{# Tech Taxonomy                                                    #}
+{# ================================================================ #}
+
+{% if tech_themes %}
+<hr style="margin:3rem 0;border-color:var(--color-border)">
+
+<h2>技術的関心領域</h2>
+<p style="font-size:0.88rem;color:var(--color-text-muted);line-height:1.8;margin-bottom:1.5rem">
+    約3,800社の有価証券報告書から抽出した22,113件の技術ニーズ・ナラティブを、GTAに着想を得たボトムアップ分析で構造化したテーマ体系です。研究者の技術シーズが、どの技術領域の企業ニーズと接続するかを示します。
+</p>
+
+<div class="d-flex gap-3 flex-wrap mb-4">
+    <div style="background:var(--color-muted-bg);padding:0.6rem 1rem;border-radius:8px;text-align:center">
+        <div style="font-size:1.3rem;font-weight:700;color:var(--color-accent)">{{ tech_themes|length }}</div>
+        <div style="font-size:0.75rem;color:var(--color-text-subtle)">大テーマ</div>
+    </div>
+    <div style="background:var(--color-muted-bg);padding:0.6rem 1rem;border-radius:8px;text-align:center">
+        {% set ns2 = namespace(sub_count=0) %}{% for t in tech_themes %}{% set ns2.sub_count = ns2.sub_count + t.sub_themes|length %}{% endfor %}
+        <div style="font-size:1.3rem;font-weight:700;color:var(--color-accent)">{{ ns2.sub_count }}</div>
+        <div style="font-size:0.75rem;color:var(--color-text-subtle)">小テーマ</div>
+    </div>
+    <div style="background:var(--color-muted-bg);padding:0.6rem 1rem;border-radius:8px;text-align:center">
+        <div style="font-size:1.3rem;font-weight:700">{{ "{:,}".format(tech_needs_count) }}</div>
+        <div style="font-size:0.75rem;color:var(--color-text-subtle)">抽出企業数</div>
+    </div>
+    <div style="background:var(--color-muted-bg);padding:0.6rem 1rem;border-radius:8px;text-align:center">
+        <div style="font-size:1.3rem;font-weight:700">22,113</div>
+        <div style="font-size:0.75rem;color:var(--color-text-subtle)">分析ナラティブ数</div>
+    </div>
+</div>
+
+{% for theme in tech_themes %}
+<div class="card mb-4">
+    <div class="card-header" style="font-weight:600">
+        <span style="display:inline-block;width:2rem;height:2rem;line-height:2rem;text-align:center;background:var(--color-accent);color:#fff;border-radius:50%;font-size:0.85rem;margin-right:0.5rem">{{ theme.id }}</span>
+        {{ theme.name }}
+    </div>
+    <div class="card-body" style="padding:0">
+        <table class="table mb-0" style="font-size:0.85rem">
+            <thead>
+                <tr style="background:var(--color-muted-bg)">
+                    <th style="width:3.5rem">ID</th>
+                    <th>テーマ</th>
+                    <th>キーワード</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for sub in theme.sub_themes %}
+                <tr>
+                    <td style="font-weight:600;color:var(--color-accent)">{{ sub.id }}</td>
+                    <td style="font-weight:500">{{ sub.name }}</td>
+                    <td>
+                        {% for kw in sub.keywords %}
+                            <span class="badge" style="background:var(--color-muted-bg);color:var(--color-text-muted);font-size:0.72rem;font-weight:400;margin:0.1rem 0">{{ kw }}</span>
+                        {% endfor %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+
+{# ================================================================ #}
 {# Business Ambition Taxonomy                                       #}
 {# ================================================================ #}
 
