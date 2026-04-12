@@ -88,5 +88,99 @@
     </div>
 </div>
 
+{# ================================================================ #}
+{# Business Ambition Taxonomy                                       #}
+{# ================================================================ #}
+
+{% if ambition_themes %}
+<hr style="margin:3rem 0;border-color:var(--color-border)">
+
+<h2>企業の新規事業野心領域</h2>
+<p style="font-size:0.88rem;color:var(--color-text-muted);line-height:1.8;margin-bottom:1.5rem">
+    約3,800社の有価証券報告書を「企業が挑戦しようとしている新領域」という視点で再分析し、16,676件の野心領域を抽出しました。Three Horizonsモデルに基づき、各野心の成熟度（具体的計画/方向性提示/探索段階）を分類しています。研究者の専門知がどの野心領域に貢献できるかを示す「人文知の接続」を各テーマに記載しています。
+</p>
+
+<div class="d-flex gap-3 flex-wrap mb-4">
+    <div style="background:var(--color-muted-bg);padding:0.6rem 1rem;border-radius:8px;text-align:center">
+        <div style="font-size:1.3rem;font-weight:700;color:var(--color-accent)">{{ ambition_themes|length }}</div>
+        <div style="font-size:0.75rem;color:var(--color-text-subtle)">大テーマ</div>
+    </div>
+    <div style="background:var(--color-muted-bg);padding:0.6rem 1rem;border-radius:8px;text-align:center">
+        {% set ns = namespace(sub_count=0) %}{% for t in ambition_themes %}{% set ns.sub_count = ns.sub_count + t.sub_themes|length %}{% endfor %}
+        <div style="font-size:1.3rem;font-weight:700;color:var(--color-accent)">{{ ns.sub_count }}</div>
+        <div style="font-size:0.75rem;color:var(--color-text-subtle)">小テーマ</div>
+    </div>
+    <div style="background:var(--color-muted-bg);padding:0.6rem 1rem;border-radius:8px;text-align:center">
+        <div style="font-size:1.3rem;font-weight:700">{{ "{:,}".format(ambition_count) }}</div>
+        <div style="font-size:0.75rem;color:var(--color-text-subtle)">抽出企業数</div>
+    </div>
+    <div style="background:var(--color-muted-bg);padding:0.6rem 1rem;border-radius:8px;text-align:center">
+        <div style="font-size:1.3rem;font-weight:700">{{ ambition_avg }}</div>
+        <div style="font-size:0.75rem;color:var(--color-text-subtle)">平均野心数/社</div>
+    </div>
+</div>
+
+<div class="d-flex gap-2 flex-wrap mb-4">
+    <div style="background:#e8f5e9;padding:0.4rem 0.8rem;border-radius:6px;font-size:0.8rem">
+        <strong>{{ "{:,}".format(maturity_dist.concrete) }}</strong> 具体的計画（H1）
+    </div>
+    <div style="background:#fff3e0;padding:0.4rem 0.8rem;border-radius:6px;font-size:0.8rem">
+        <strong>{{ "{:,}".format(maturity_dist.directional) }}</strong> 方向性提示（H2）
+    </div>
+    <div style="background:#fce4ec;padding:0.4rem 0.8rem;border-radius:6px;font-size:0.8rem">
+        <strong>{{ "{:,}".format(maturity_dist.exploratory) }}</strong> 探索段階（H3）
+    </div>
+</div>
+
+{% for theme in ambition_themes %}
+<div class="card mb-4">
+    <div class="card-header" style="font-weight:600">
+        <span style="display:inline-block;width:2rem;height:2rem;line-height:2rem;text-align:center;background:var(--color-accent);color:#fff;border-radius:50%;font-size:0.85rem;margin-right:0.5rem">{{ theme.id }}</span>
+        {{ theme.name }}
+    </div>
+    <div class="card-body" style="padding:0">
+        <table class="table mb-0" style="font-size:0.85rem">
+            <thead>
+                <tr style="background:var(--color-muted-bg)">
+                    <th style="width:3.5rem">ID</th>
+                    <th style="width:30%">テーマ</th>
+                    <th style="width:15%">キーワード</th>
+                    <th>人文知の接続</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for sub in theme.sub_themes %}
+                <tr>
+                    <td style="font-weight:600;color:var(--color-accent)">{{ sub.id }}</td>
+                    <td style="font-weight:500">{{ sub.name }}</td>
+                    <td>
+                        {% for kw in sub.keywords %}
+                            <span class="badge" style="background:var(--color-muted-bg);color:var(--color-text-muted);font-size:0.72rem;font-weight:400;margin:0.1rem 0">{{ kw }}</span>
+                        {% endfor %}
+                    </td>
+                    <td style="font-size:0.8rem;color:var(--color-text-muted);line-height:1.6">{{ sub.humanities_role }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endfor %}
+
+<div class="card mb-4">
+    <div class="card-header">野心領域テーマ体系について</div>
+    <div class="card-body" style="font-size:0.85rem;line-height:1.8">
+        <h5 style="font-size:0.9rem;font-weight:600;margin-bottom:0.75rem">分析手法</h5>
+        <p>有価証券報告書の「経営方針、経営環境及び対処すべき課題等」セクションから、Claude APIを用いて各企業の「新規事業・野心的領域」を個別に抽出しました。抽出された16,676件の野心領域を、マッキンゼーのThree Horizonsモデル（H1: 具体的計画、H2: 方向性提示、H3: 探索段階）で成熟度分類し、LLMによるボトムアップ構造化で10大テーマ・40小テーマの体系を構築しています。</p>
+
+        <h5 style="font-size:0.9rem;font-weight:600;margin-top:1.25rem;margin-bottom:0.75rem">人文知の接続</h5>
+        <p>各小テーマには「人文社会科学の研究者がどう貢献できるか」が一文で記述されています。企業が「やりたいが、まだ十分にできていないこと」に対して、人文社会科学の研究知見がどのような形で事業実現を支援できるかを示しています。例えば、「EV・次世代モビリティ」（G1）には都市社会学・交通行動論による移動弱者のアクセス分析が、「再生医療の事業化」（E3）には生命倫理学による社会的受容条件の検討が接続されています。</p>
+
+        <h5 style="font-size:0.9rem;font-weight:600;margin-top:1.25rem;margin-bottom:0.75rem">Three Horizonsモデル</h5>
+        <p>各企業の野心領域は成熟度によって3段階に分類されています。<strong>具体的計画（H1）</strong>は投資・組織が存在する段階、<strong>方向性提示（H2）</strong>は経営方針で方向性が示されている段階、<strong>探索段階（H3）</strong>は非連続的な新領域への挑戦を模索している段階です。H3領域は特に人文社会科学の知見との親和性が高い傾向があります。</p>
+    </div>
+</div>
+{% endif %}
+
 </div>
 {% endblock %}

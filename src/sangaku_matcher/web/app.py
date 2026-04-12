@@ -384,12 +384,13 @@ async def needs_about(request: Request):
 
 @app.get("/themes", response_class=HTMLResponse)
 async def themes_page(request: Request):
-    """Display the 33-theme taxonomy with per-theme statistics."""
+    """Display humanities theme taxonomy and business ambition taxonomy."""
     with connect(settings.matcher_db_path) as conn:
-        # Check if taxonomy tables exist
         tables = {r["name"] for r in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
         )}
+
+        # Humanities themes (33-theme taxonomy)
         themes_data = []
         if "taxonomy_themes" in tables and "company_taxonomy_proximity" in tables:
             rows = conn.execute("""
@@ -409,9 +410,48 @@ async def themes_page(request: Request):
                 except (json.JSONDecodeError, TypeError):
                     d["parsed_keywords"] = []
                 themes_data.append(d)
+
+        # Business ambition taxonomy (from JSON file)
+        ambition_data = []
+        ambition_path = Path(__file__).parent.parent.parent.parent / "data" / "ambition_taxonomy.json"
+        if ambition_path.exists():
+            with open(ambition_path) as f:
+                ambition_data = json.load(f).get("themes", [])
+
+        # Ambition stats
+        ambition_count = conn.execute(
+            "SELECT COUNT(*) as c FROM companies WHERE ambitions_at IS NOT NULL"
+        ).fetchone()["c"]
+        ambition_avg = 0
+        if ambition_count > 0:
+            row = conn.execute(
+                "SELECT ROUND(AVG(json_array_length(json_extract(ambitions_json, '$.ambitions'))), 1) as avg "
+                "FROM companies WHERE ambitions_json IS NOT NULL"
+            ).fetchone()
+            ambition_avg = row["avg"] if row else 0
+
+        # Maturity distribution
+        maturity_dist = {"concrete": 0, "directional": 0, "exploratory": 0}
+        mat_rows = conn.execute(
+            "SELECT ambitions_json FROM companies WHERE ambitions_json IS NOT NULL"
+        ).fetchall()
+        for mr in mat_rows:
+            try:
+                data = json.loads(mr["ambitions_json"])
+                for amb in data.get("ambitions", []):
+                    m = amb.get("maturity", "")
+                    if m in maturity_dist:
+                        maturity_dist[m] += 1
+            except (json.JSONDecodeError, TypeError):
+                pass
+
         company_count = conn.execute("SELECT COUNT(*) as c FROM companies").fetchone()["c"]
     return templates.TemplateResponse(request, "themes.html", {
         "themes": themes_data,
+        "ambition_themes": ambition_data,
+        "ambition_count": ambition_count,
+        "ambition_avg": ambition_avg,
+        "maturity_dist": maturity_dist,
         "company_count": company_count,
     })
 
