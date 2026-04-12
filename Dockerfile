@@ -51,11 +51,10 @@ COPY data/tech_taxonomy.json data/tech_taxonomy.json
 COPY data/ambition_taxonomy.json data/ambition_taxonomy.json
 COPY data/exit_weights.json data/exit_weights.json
 
-# Re-copy templates and static to ensure latest version is deployed
-# (pip install caches the package; this ensures template changes propagate)
-RUN SITE_PKG=$(python -c "import sangaku_matcher.web; import os; print(os.path.dirname(sangaku_matcher.web.__file__))") && \
-    cp -r src/sangaku_matcher/web/static "$SITE_PKG/static" && \
-    cp -r src/sangaku_matcher/web/templates "$SITE_PKG/templates"
+# Re-copy ALL source into site-packages to ensure latest code is deployed.
+# pip install layer is cached by Docker; this overwrites with current source.
+RUN SITE_PKG=$(python -c "import sangaku_matcher; import os; print(os.path.dirname(sangaku_matcher.__file__))") && \
+    cp -r src/sangaku_matcher/* "$SITE_PKG/"
 
 # Use ONNX backend with quantized local model
 ENV USE_ONNX=1
