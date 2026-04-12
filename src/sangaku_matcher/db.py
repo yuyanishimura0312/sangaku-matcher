@@ -107,6 +107,30 @@ CREATE INDEX IF NOT EXISTS idx_collab_uni ON collaborations(university_name);
 CREATE INDEX IF NOT EXISTS idx_co_updated_at ON companies(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_match_created_at ON matches(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_seed_created_at ON seeds(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS multi_exit_matches (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    seed_id         TEXT NOT NULL,
+    exit_type       TEXT NOT NULL,
+    edinet_code     TEXT NOT NULL,
+    rank            INTEGER NOT NULL,
+    total_score     REAL NOT NULL,
+    tech_prox       REAL,
+    need_fit        REAL,
+    abs_cap         REAL,
+    past_ties       REAL,
+    future_option   REAL,
+    open_inno       REAL,
+    humanities_fit  REAL,
+    ambition_fit    REAL,
+    theme_breadth   REAL,
+    synergy         REAL,
+    hypothesis      TEXT,
+    created_at      TEXT NOT NULL,
+    FOREIGN KEY (seed_id) REFERENCES seeds(seed_id)
+);
+CREATE INDEX IF NOT EXISTS idx_mex_seed ON multi_exit_matches(seed_id);
+CREATE INDEX IF NOT EXISTS idx_mex_exit ON multi_exit_matches(seed_id, exit_type);
 """
 
 

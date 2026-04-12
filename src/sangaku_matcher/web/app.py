@@ -176,8 +176,120 @@ def _load_match_result(seed_id: str):
     return seed, result
 
 
+def _load_multi_exit_result(seed_id: str):
+    """Load a saved multi-exit match result from DB. Returns MultiExitMatchResult or None."""
+    from sangaku_matcher.matcher import (
+        MultiExitMatchResult, ExitRanking, RankedCompany,
+    )
+    from sangaku_matcher.scoring import FeatureResult
+    from sangaku_matcher.seeds import Seed
+    from sangaku_matcher.config import EXIT_LABELS, EXIT_DESCRIPTIONS
+    import numpy as np
+
+    with connect(settings.matcher_db_path) as conn:
+        # Check if multi_exit_matches table exists
+        table_check = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='multi_exit_matches'"
+        ).fetchone()
+        if not table_check:
+            return None
+
+        seed_row = conn.execute("SELECT * FROM seeds WHERE seed_id = ?", (seed_id,)).fetchone()
+        if not seed_row:
+            return None
+
+        mex_rows = conn.execute(
+            """SELECT m.*, c.name, c.industry FROM multi_exit_matches m
+               JOIN companies c ON m.edinet_code = c.edinet_code
+               WHERE m.seed_id = ? ORDER BY m.exit_type, m.rank""",
+            (seed_id,),
+        ).fetchall()
+
+        if not mex_rows:
+            return None
+
+    # Convert Row to dict for safe .get() access
+    seed_dict = dict(seed_row)
+    seed = Seed(
+        seed_id=seed_dict["seed_id"],
+        title=seed_dict["title"],
+        description=seed_dict["description"],
+        doi=seed_dict.get("doi"),
+        patent_no=seed_dict.get("patent_no"),
+        semantic_vector=np.zeros(384),
+        source_type=seed_dict["source_type"],
+        created_at=seed_dict["created_at"],
+    )
+
+    # Group rows by exit_type
+    from collections import defaultdict
+    grouped: dict[str, list] = defaultdict(list)
+    for r in mex_rows:
+        grouped[r["exit_type"]].append(r)
+
+    exits: list[ExitRanking] = []
+    # Maintain stable order: rd, new_domain, exploratory
+    for exit_type in ("rd", "new_domain", "exploratory"):
+        rows = grouped.get(exit_type, [])
+        if not rows:
+            continue
+
+        rankings = []
+        for r in rows:
+            # Reconstruct feature_scores from DB columns
+            score_cols = {
+                "tech_prox": r["tech_prox"],
+                "need_fit": r["need_fit"],
+                "abs_cap": r["abs_cap"],
+                "past_ties": r["past_ties"],
+                "future_option": r["future_option"],
+                "open_inno": r["open_inno"],
+                "humanities_fit": r["humanities_fit"],
+                "ambition_fit": r["ambition_fit"],
+                "theme_breadth": r["theme_breadth"],
+                "synergy": r["synergy"],
+            }
+            fs = {}
+            for col, val in score_cols.items():
+                if val is not None:
+                    fs[col] = FeatureResult(val, "")
+
+            rankings.append(RankedCompany(
+                rank=r["rank"],
+                edinet_code=r["edinet_code"],
+                company_name=r["name"],
+                industry=r["industry"] or "",
+                total_score=r["total_score"],
+                feature_scores=fs,
+                recommended_mode=exit_type,
+                overall_comment=r["hypothesis"] or "",
+            ))
+
+        exits.append(ExitRanking(
+            exit_type=exit_type,
+            exit_label=EXIT_LABELS.get(exit_type, exit_type),
+            exit_description=EXIT_DESCRIPTIONS.get(exit_type, ""),
+            rankings=rankings,
+        ))
+
+    return MultiExitMatchResult(
+        seed=seed,
+        exits=exits,
+        executed_at=mex_rows[0]["created_at"] if mex_rows else "",
+        company_count=_company_count(),
+    )
+
+
 @app.get("/result/{seed_id}", response_class=HTMLResponse)
 async def result_page(request: Request, seed_id: str):
+    # Try multi-exit first
+    multi_result = _load_multi_exit_result(seed_id)
+    if multi_result:
+        return templates.TemplateResponse(request, "multi_exit_result.html", {
+            "result": multi_result,
+            "seed": multi_result.seed,
+        })
+    # Fall back to legacy single-ranking
     seed, result = _load_match_result(seed_id)
     if seed is None:
         return HTMLResponse("Seed not found", status_code=404)
@@ -210,15 +322,52 @@ async def results_list(request: Request, page: int = 1):
     per_page = 20
     offset = (page - 1) * per_page
     with connect(settings.matcher_db_path) as conn:
-        total = conn.execute("SELECT COUNT(DISTINCT seed_id) as c FROM matches").fetchone()["c"]
-        rows = conn.execute(
-            """SELECT s.seed_id, s.title, s.created_at, COUNT(m.match_id) as match_count,
-                      MAX(m.total_score) as top_score
-               FROM seeds s LEFT JOIN matches m ON s.seed_id = m.seed_id
-               GROUP BY s.seed_id ORDER BY s.created_at DESC
-               LIMIT ? OFFSET ?""",
-            (per_page, offset),
-        ).fetchall()
+        # Check if multi_exit_matches table exists
+        has_mex = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='multi_exit_matches'"
+        ).fetchone() is not None
+
+        # Count total seeds that have any match results (legacy or multi-exit)
+        if has_mex:
+            total = conn.execute(
+                """SELECT COUNT(DISTINCT s.seed_id) as c FROM seeds s
+                   WHERE EXISTS (SELECT 1 FROM matches WHERE seed_id = s.seed_id)
+                      OR EXISTS (SELECT 1 FROM multi_exit_matches WHERE seed_id = s.seed_id)"""
+            ).fetchone()["c"]
+
+            rows = conn.execute(
+                """SELECT s.seed_id, s.title, s.created_at,
+                          COALESCE(
+                              (SELECT COUNT(*) FROM multi_exit_matches WHERE seed_id = s.seed_id),
+                              0
+                          ) + COALESCE(
+                              (SELECT COUNT(*) FROM matches WHERE seed_id = s.seed_id),
+                              0
+                          ) as match_count,
+                          COALESCE(
+                              (SELECT MAX(total_score) FROM multi_exit_matches WHERE seed_id = s.seed_id),
+                              (SELECT MAX(total_score) FROM matches WHERE seed_id = s.seed_id)
+                          ) as top_score,
+                          CASE WHEN EXISTS (SELECT 1 FROM multi_exit_matches WHERE seed_id = s.seed_id)
+                               THEN 1 ELSE 0 END as is_multi_exit
+                   FROM seeds s
+                   WHERE EXISTS (SELECT 1 FROM matches WHERE seed_id = s.seed_id)
+                      OR EXISTS (SELECT 1 FROM multi_exit_matches WHERE seed_id = s.seed_id)
+                   ORDER BY s.created_at DESC
+                   LIMIT ? OFFSET ?""",
+                (per_page, offset),
+            ).fetchall()
+        else:
+            total = conn.execute("SELECT COUNT(DISTINCT seed_id) as c FROM matches").fetchone()["c"]
+            rows = conn.execute(
+                """SELECT s.seed_id, s.title, s.created_at, COUNT(m.match_id) as match_count,
+                          MAX(m.total_score) as top_score, 0 as is_multi_exit
+                   FROM seeds s LEFT JOIN matches m ON s.seed_id = m.seed_id
+                   GROUP BY s.seed_id ORDER BY s.created_at DESC
+                   LIMIT ? OFFSET ?""",
+                (per_page, offset),
+            ).fetchall()
+
     total_pages = max(1, math.ceil(total / per_page))
     return templates.TemplateResponse(request, "results_list.html", {
         "results": rows, "page": page, "total_pages": total_pages,

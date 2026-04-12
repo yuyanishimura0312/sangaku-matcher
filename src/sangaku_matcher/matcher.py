@@ -595,6 +595,71 @@ def _generate_exit_hypothesis(
         return " ".join(parts)
 
 
+def _mmr_rerank(
+    candidates: list[tuple[float, dict, dict, list]],
+    top_n: int,
+    lambda_param: float = 0.5,
+) -> list[tuple[float, dict, dict, list]]:
+    """Maximal Marginal Relevance reranking using R&D text vectors for diversity.
+
+    Selects items that balance relevance (original score) with novelty
+    (dissimilarity to already-selected items based on cosine distance of
+    R&D text vectors).
+
+    Args:
+        candidates: List of (total_score, company_dict, features, themes).
+        top_n: Number of items to select.
+        lambda_param: Trade-off parameter. 0=pure diversity, 1=pure relevance.
+
+    Returns:
+        Reranked list of top_n candidates.
+    """
+    if len(candidates) <= top_n:
+        return candidates
+
+    selected: list[int] = []
+    remaining = list(range(len(candidates)))
+
+    # Pre-extract and normalize R&D vectors for cosine similarity
+    vectors: list[np.ndarray | None] = []
+    for total, co, features, mt in candidates:
+        vec_bytes = co.get("rd_text_vector")
+        if vec_bytes and len(vec_bytes) > 0:
+            vec = np.frombuffer(vec_bytes, dtype=np.float32).copy()
+            norm = np.linalg.norm(vec)
+            vectors.append(vec / norm if norm > 0 else vec)
+        else:
+            vectors.append(None)
+
+    # First item: highest score
+    remaining.sort(key=lambda i: candidates[i][0], reverse=True)
+    selected.append(remaining.pop(0))
+
+    while len(selected) < top_n and remaining:
+        best_mmr = -float('inf')
+        best_idx_in_remaining = 0
+
+        for ri, ci in enumerate(remaining):
+            relevance = candidates[ci][0]
+
+            # Max cosine similarity to already-selected items
+            max_sim = 0.0
+            if vectors[ci] is not None:
+                for si in selected:
+                    if vectors[si] is not None:
+                        sim = float(np.dot(vectors[ci], vectors[si]))
+                        max_sim = max(max_sim, sim)
+
+            mmr = lambda_param * relevance - (1 - lambda_param) * max_sim
+            if mmr > best_mmr:
+                best_mmr = mmr
+                best_idx_in_remaining = ri
+
+        selected.append(remaining.pop(best_idx_in_remaining))
+
+    return [candidates[i] for i in selected]
+
+
 def run_multi_exit_match(seed: Seed, top_n: int | None = None) -> MultiExitMatchResult:
     """Score all companies using 9 dimensions, then rank by 3 exit types.
 
@@ -716,7 +781,19 @@ def run_multi_exit_match(seed: Seed, top_n: int | None = None) -> MultiExitMatch
             exit_scored.append((total, co, features, matching_themes))
 
         exit_scored.sort(key=lambda x: x[0], reverse=True)
-        top = exit_scored[:top_n]
+
+        # Apply exit-specific reranking for diversity
+        if exit_type == "exploratory":
+            # MMR reranking for diversity (lambda=0.5: balanced)
+            pool = exit_scored[:top_n * 3]
+            top = _mmr_rerank(pool, top_n, lambda_param=0.5)
+        elif exit_type == "new_domain":
+            # Mild diversity reranking (lambda=0.7: mostly relevance)
+            pool = exit_scored[:top_n * 2]
+            top = _mmr_rerank(pool, top_n, lambda_param=0.7)
+        else:
+            # R&D: pure score ranking, no reranking
+            top = exit_scored[:top_n]
 
         rankings = []
         for rank_idx, (total, co, features, matching_themes) in enumerate(top, 1):
@@ -744,13 +821,16 @@ def run_multi_exit_match(seed: Seed, top_n: int | None = None) -> MultiExitMatch
         ))
 
     duration = time.time() - start
-    return MultiExitMatchResult(
+    result = MultiExitMatchResult(
         seed=seed,
         exits=exits,
         executed_at=datetime.now().isoformat(timespec="seconds"),
         duration_sec=round(duration, 2),
         company_count=len(companies),
     )
+
+    _save_multi_exit_result(result)
+    return result
 
 
 def _save_match_result(result: MatchResult) -> None:
@@ -798,3 +878,88 @@ def _save_match_result(result: MatchResult) -> None:
                     result.executed_at,
                 ),
             )
+
+
+def _save_multi_exit_result(result: MultiExitMatchResult) -> None:
+    """Persist multi-exit match results to DB.
+
+    Saves the seed record and all exit-type rankings into the
+    multi_exit_matches table. Deletes any previous results for the
+    same seed_id to support re-runs.
+    """
+    with connect(settings.matcher_db_path) as conn:
+        # Ensure multi_exit_matches table exists (safe for first run)
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS multi_exit_matches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                seed_id TEXT NOT NULL,
+                exit_type TEXT NOT NULL,
+                edinet_code TEXT NOT NULL,
+                rank INTEGER NOT NULL,
+                total_score REAL NOT NULL,
+                tech_prox REAL, need_fit REAL, abs_cap REAL, past_ties REAL,
+                future_option REAL, open_inno REAL, humanities_fit REAL,
+                ambition_fit REAL, theme_breadth REAL, synergy REAL,
+                hypothesis TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (seed_id) REFERENCES seeds(seed_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_mex_seed ON multi_exit_matches(seed_id);
+            CREATE INDEX IF NOT EXISTS idx_mex_exit ON multi_exit_matches(seed_id, exit_type);
+        """)
+
+        # Upsert seed record
+        conn.execute(
+            """INSERT OR REPLACE INTO seeds
+               (seed_id, title, description, doi, patent_no, semantic_vector, source_type, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                result.seed.seed_id,
+                result.seed.title,
+                result.seed.description,
+                result.seed.doi,
+                result.seed.patent_no,
+                result.seed.semantic_vector.tobytes(),
+                result.seed.source_type,
+                result.seed.created_at,
+            ),
+        )
+
+        # Delete existing multi-exit results for this seed (re-run support)
+        conn.execute(
+            "DELETE FROM multi_exit_matches WHERE seed_id = ?",
+            (result.seed.seed_id,),
+        )
+
+        # Insert all exit rankings
+        for exit_ranking in result.exits:
+            for rc in exit_ranking.rankings:
+                fs = rc.feature_scores
+                conn.execute(
+                    """INSERT INTO multi_exit_matches
+                       (seed_id, exit_type, edinet_code, rank, total_score,
+                        tech_prox, need_fit, abs_cap, past_ties,
+                        future_option, open_inno, humanities_fit,
+                        ambition_fit, theme_breadth, synergy,
+                        hypothesis, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        result.seed.seed_id,
+                        exit_ranking.exit_type,
+                        rc.edinet_code,
+                        rc.rank,
+                        rc.total_score,
+                        fs.get("tech_prox", FeatureResult(0, "")).value,
+                        fs.get("need_fit", FeatureResult(0, "")).value,
+                        fs.get("abs_cap", FeatureResult(0, "")).value,
+                        fs.get("past_ties", FeatureResult(0, "")).value,
+                        fs.get("future_option", FeatureResult(0, "")).value,
+                        fs.get("open_inno", FeatureResult(0, "")).value,
+                        fs.get("humanities_fit", FeatureResult(0, "")).value,
+                        fs.get("ambition_fit", FeatureResult(0, "")).value,
+                        fs.get("theme_breadth", FeatureResult(0, "")).value,
+                        fs.get("synergy", FeatureResult(0, "")).value,
+                        rc.overall_comment,
+                        result.executed_at,
+                    ),
+                )

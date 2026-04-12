@@ -20,7 +20,7 @@
         <tr>
             <td>{{ r.created_at[:16] }}</td>
             <td>{{ r.title[:50] }}{% if r.title|length > 50 %}...{% endif %}</td>
-            <td>{{ r.match_count }}社</td>
+            <td>{{ r.match_count }}件{% if r.is_multi_exit %} <span class="badge bg-info">多出口</span>{% endif %}</td>
             <td>{{ "%.2f"|format(r.top_score) if r.top_score else "-" }}</td>
             <td><a href="/result/{{ r.seed_id }}" class="btn btn-outline-primary btn-sm">詳細を表示</a></td>
         </tr>

@@ -1,6 +1,8 @@
 """Application settings loaded from .env and environment variables."""
 from __future__ import annotations
 
+import json
+import logging
 from pathlib import Path
 
 from pydantic_settings import BaseSettings
@@ -63,8 +65,8 @@ class Settings(BaseSettings):
 # Singleton instance — import this throughout the app
 settings = Settings()
 
-# Multi-exit scoring weights
-EXIT_WEIGHTS: dict[str, dict[str, float]] = {
+# Default multi-exit scoring weights (used when no JSON override exists)
+_DEFAULT_EXIT_WEIGHTS: dict[str, dict[str, float]] = {
     "rd": {
         "tech_prox": 0.20, "need_fit": 0.25, "abs_cap": 0.20,
         "past_ties": 0.10, "open_inno": 0.10, "future_option": 0.00,
@@ -84,6 +86,43 @@ EXIT_WEIGHTS: dict[str, dict[str, float]] = {
         "synergy": 0.05,
     },
 }
+
+_config_logger = logging.getLogger(__name__)
+
+
+def _load_exit_weights() -> dict[str, dict[str, float]]:
+    """Load exit weights from JSON file, falling back to defaults.
+
+    Searches for data/exit_weights.json relative to the project root
+    and the current working directory. Validates that each exit type's
+    weights sum to approximately 1.0.
+    """
+    candidates = [
+        Path(__file__).resolve().parent.parent.parent / "data" / "exit_weights.json",
+        Path("data/exit_weights.json"),
+    ]
+    for p in candidates:
+        if p.exists():
+            try:
+                with open(p) as f:
+                    loaded = json.load(f)
+                # Validate: each exit must have weights summing to ~1.0
+                for exit_type, weights in loaded.items():
+                    total = sum(weights.values())
+                    if abs(total - 1.0) > 0.01:
+                        _config_logger.warning(
+                            "Exit weights for %s sum to %.3f (expected 1.0), using defaults",
+                            exit_type, total,
+                        )
+                        return _DEFAULT_EXIT_WEIGHTS
+                _config_logger.info("Loaded exit weights from %s", p)
+                return loaded
+            except (json.JSONDecodeError, TypeError, KeyError) as exc:
+                _config_logger.warning("Failed to parse %s: %s, using defaults", p, exc)
+    return _DEFAULT_EXIT_WEIGHTS
+
+
+EXIT_WEIGHTS: dict[str, dict[str, float]] = _load_exit_weights()
 
 EXIT_LABELS: dict[str, str] = {
     "rd": "共同研究（R&D）",
