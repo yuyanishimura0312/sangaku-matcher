@@ -565,47 +565,126 @@ def _generate_exit_hypothesis(
     af = features.get("ambition_fit", FeatureResult(0, ""))
     tb = features.get("theme_breadth", FeatureResult(0, ""))
 
+    # Helper: extract top theme names from a scorer's rationale
+    def _extract_theme_names(rationale: str, max_n: int = 3) -> list[str]:
+        """Pull theme names from rationale like '高親和: テーマA(96%); テーマB(91%)'."""
+        names = []
+        if "高親和:" in rationale:
+            after = rationale.split("高親和:")[1]
+            for part in after.split(";"):
+                part = part.strip()
+                if "(" in part:
+                    name = part.split("(")[0].strip()
+                    if name and len(name) > 2:
+                        names.append(name)
+        return names[:max_n]
+
+    # Helper: extract humanities_role from ambition_fit rationale
+    def _extract_humanities_role(rationale: str) -> str:
+        """Pull the humanities_role sentence from ambition_fit rationale."""
+        # humanities_role follows the theme list, starts with a full sentence
+        parts = rationale.split("。")
+        for p in parts:
+            p = p.strip()
+            # humanities_role sentences typically reference academic disciplines
+            if any(kw in p for kw in ["学の", "論の", "研究の", "学的", "倫理"]) and len(p) > 20:
+                return p + "。"
+        return ""
+
     if exit_type == "rd":
-        # R&D joint research: why this company needs the researcher's expertise
-        parts = [f"{company_name}は、当該研究シーズに関連する技術課題を抱えており、共同研究の対象となりうる企業です。"]
-        if nf.rationale:
-            parts.append(nf.rationale)
-        if pt.value > 0.2:
-            parts.append("大学との連携実績があり、産学連携の受け入れ体制が整っています。")
-        if ac.value > 0.5:
-            parts.append("R&D投資が活発で、外部知識を取り込む組織能力が高い企業です。")
-        return " ".join(parts)
+        # R&D: concrete tech alignment narrative
+        parts = []
+        parts.append(
+            f"{company_name}は、有価証券報告書の分析から、"
+            f"当該研究シーズと関連性の高い技術課題を抱えていると推定されます。"
+        )
+        if ac.value > 0.5 and pt.value > 0.2:
+            parts.append(
+                f"同社はR&D投資が活発で、大学との共同研究実績も確認されており、"
+                f"産学連携の受け入れ体制が整った企業です。"
+            )
+        elif ac.value > 0.5:
+            parts.append(
+                f"同社はR&D投資が活発で、外部の研究知見を事業に取り込む"
+                f"組織的な体制を持っています。"
+            )
+        elif pt.value > 0.2:
+            parts.append(
+                f"同社は大学との連携実績があり、"
+                f"産学連携の進め方について一定の経験を有しています。"
+            )
+        parts.append(
+            f"共同研究の具体的なテーマ設定に向けて、"
+            f"まず技術担当者との面談を通じて課題の詳細を確認することを推奨します。"
+        )
+        return "".join(parts)
 
     elif exit_type == "new_domain":
-        # New domain exploration: what ambition the company has + how researcher can contribute
-        parts = [f"{company_name}は、新しい事業領域への挑戦を有価証券報告書で明示しています。"]
-        if af.rationale:
-            parts.append(af.rationale)
-        if hf.value > 0.4:
-            parts.append("人文社会科学的な知見がこの新領域への参入を後押しする可能性があります。")
+        # New domain: ambition themes + how researcher can contribute
+        theme_names = _extract_theme_names(af.rationale)
+        hum_role = _extract_humanities_role(af.rationale)
+
+        parts = []
+        if theme_names:
+            theme_str = "「" + "」「".join(theme_names[:2]) + "」"
+            parts.append(
+                f"{company_name}は、{theme_str}"
+                f"といった新しい事業領域への挑戦を"
+                f"有価証券報告書で示しています。"
+            )
+        else:
+            parts.append(
+                f"{company_name}は、新たな事業領域の開拓に"
+                f"取り組む姿勢を有価証券報告書で示しています。"
+            )
+        if hum_role:
+            parts.append(
+                f"この新領域において、{hum_role}"
+            )
+        else:
+            parts.append(
+                f"こうした新領域への参入にあたっては、"
+                f"研究者の専門的知見が問いの設定や方向性の検討に貢献できる可能性があります。"
+            )
         if oi.value > 0.4:
-            parts.append("オープンイノベーション体制が整備されており、外部との新領域探索に積極的です。")
-        return " ".join(parts)
+            parts.append(
+                f"同社はオープンイノベーション体制を整えており、"
+                f"外部の研究者との新領域探索に対して組織的な受容性が高いと考えられます。"
+            )
+        return "".join(parts)
 
     else:  # exploratory
-        # Exploratory dialogue: what conversation topics exist
+        # Exploratory: theme breadth grouped by axis
         n_themes = len(cached_matching_themes)
         if n_themes > 0:
-            # Group by axis for readable display
-            by_axis = {}
-            for m in cached_matching_themes[:8]:
-                axis_label = {"humanities": "社会", "tech": "技術", "ambition": "野心"}.get(m.get("axis", ""), "")
-                by_axis.setdefault(axis_label, []).append(m["label"])
-            topic_parts = []
+            by_axis: dict[str, list[str]] = {}
+            for m in cached_matching_themes[:10]:
+                axis_label = {"humanities": "社会課題", "tech": "技術", "ambition": "新規事業"}.get(m.get("axis", ""), "")
+                if axis_label:
+                    by_axis.setdefault(axis_label, []).append(m["label"])
+
+            parts = []
+            parts.append(
+                f"{company_name}とは、複数の分野にわたって対話の接点が見込まれます。"
+            )
+            topic_sentences = []
             for axis_label, names in by_axis.items():
-                topic_parts.append(f"{axis_label}分野では{', '.join(names[:3])}")
-            parts = [
-                f"{company_name}とは{n_themes}個のテーマで対話の接点があります。"
-                f"{'。'.join(topic_parts)}などについて、探索的な対話から連携の可能性を探ることができます。"
-            ]
+                display_names = "「" + "」「".join(names[:2]) + "」"
+                topic_sentences.append(f"{axis_label}の観点では{display_names}")
+            if topic_sentences:
+                parts.append("、".join(topic_sentences) + "などのテーマが挙げられます。")
+
+            parts.append(
+                f"まずは幅広い対話を通じて、"
+                f"具体的な連携テーマの発見を目指すことを推奨します。"
+            )
+            return "".join(parts)
         else:
-            parts = [f"{company_name}とは、異なる視点からの対話により新たな接点が見つかる可能性があります。"]
-        return " ".join(parts)
+            return (
+                f"{company_name}とは、直接的なテーマの重なりは限られますが、"
+                f"異なる視点からの対話を通じて、新たな連携の接点が"
+                f"見つかる可能性があります。"
+            )
 
 
 def _mmr_rerank(
