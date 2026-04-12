@@ -44,11 +44,18 @@ print('Quantized model cached')" && \
 RUN apt-get purge -y gcc g++ && apt-get autoremove -y && \
     rm -rf /root/.cache /tmp/*
 
-# Copy pre-built database and taxonomy files
+# Copy pre-built database, taxonomy files, and weight config
 COPY data/matcher.db data/matcher.db
 COPY data/theme_taxonomy.json data/theme_taxonomy.json
 COPY data/tech_taxonomy.json data/tech_taxonomy.json
 COPY data/ambition_taxonomy.json data/ambition_taxonomy.json
+COPY data/exit_weights.json data/exit_weights.json
+
+# Re-copy templates and static to ensure latest version is deployed
+# (pip install caches the package; this ensures template changes propagate)
+RUN SITE_PKG=$(python -c "import sangaku_matcher.web; import os; print(os.path.dirname(sangaku_matcher.web.__file__))") && \
+    cp -r src/sangaku_matcher/web/static "$SITE_PKG/static" && \
+    cp -r src/sangaku_matcher/web/templates "$SITE_PKG/templates"
 
 # Use ONNX backend with quantized local model
 ENV USE_ONNX=1
