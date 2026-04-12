@@ -413,6 +413,7 @@ def run_match(seed: Seed, top_n: int | None = None) -> MatchResult:
 
     # Pre-compute similarity distributions for z-score normalization
     need_fit.precompute_distribution(seed.semantic_vector, companies)
+    tech_prox.precompute_distribution(seed.semantic_vector, companies)
 
     scorers = [
         (tech_prox, settings.w_tech_prox),
@@ -835,6 +836,7 @@ def run_multi_exit_match(seed: Seed, top_n: int | None = None) -> MultiExitMatch
 
     # Pre-compute similarity distributions for z-score normalization
     need_fit.precompute_distribution(seed.semantic_vector, companies)
+    tech_prox.precompute_distribution(seed.semantic_vector, companies)
 
     # All 9 scorers (no weights here; we apply exit-specific weights later)
     scorers = [

@@ -134,27 +134,35 @@ class ThemeFitScorer:
 
         company_prox = self._company_proximities[ec]
 
-        # Weighted score: sum of (seed-theme similarity × company-theme z-score)
+        # Normalize seed affinities: relative strength among all themes.
+        # Raw cosine sims cluster in a narrow range (e5-small); z-score
+        # normalization highlights which themes are truly relevant to THIS seed.
+        seed_sims = self._seed_theme_sims
+        seed_mean = float(seed_sims.mean())
+        seed_std = max(float(seed_sims.std()), 0.001)
+
+        # Weighted score: sum of (normalized seed weight × company-theme z-score)
         total_score = 0.0
         total_weight = 0.0
         top_themes = []
 
         for i, theme in enumerate(self._themes):
             tid = theme["theme_id"]
-            seed_sim = self._seed_theme_sims[i]
+            raw_seed_sim = float(seed_sims[i])
             company_raw = company_prox.get(tid, 0.0)
 
-            # Z-score normalize
+            # Z-score normalize company proximity
             mean, std = self._theme_stats.get(tid, (0.85, 0.01))
             z = (company_raw - mean) / std
             company_score = 1.0 / (1.0 + np.exp(-z))
 
-            weight = max(0.0, seed_sim)
+            # Weight = z-scored seed affinity; themes below average get weight 0
+            weight = max(0.0, (raw_seed_sim - seed_mean) / seed_std)
             total_score += weight * company_score
             total_weight += weight
 
             if company_score > 0.6:
-                top_themes.append((theme["label"], company_score, seed_sim))
+                top_themes.append((theme["label"], company_score, raw_seed_sim))
 
         if total_weight > 0:
             final_score = total_score / total_weight

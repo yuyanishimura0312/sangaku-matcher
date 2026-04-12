@@ -148,8 +148,8 @@ class ThemeBreadthScorer:
             z = (company_raw - mean) / std
             company_z = 1.0 / (1.0 + np.exp(-z))
 
-            # Threshold check: researcher_affinity > 0.83 AND company_z > 0.55
-            if seed_sim > 0.83 and company_z > 0.55:
+            # Threshold check: relaxed to match e5-small's narrow similarity range
+            if seed_sim > 0.80 and company_z > 0.50:
                 breadth_count += 1
                 axis_counts[theme["axis"]] += 1
                 matching.append({
@@ -163,8 +163,8 @@ class ThemeBreadthScorer:
         # Store matching themes for hypothesis generation
         self.matching_themes = matching
 
-        # Score: breadth_count / 15, capped at 1.0
-        final_score = min(1.0, breadth_count / 15.0)
+        # Score: breadth_count / 20, capped at 1.0 (more themes match with relaxed thresholds)
+        final_score = min(1.0, breadth_count / 20.0)
 
         # Build rationale
         h_count = axis_counts["humanities"]
