@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}多出口マッチング結果 -- {{ seed.title }}{% endblock %}
+{% block content %}
+<h2>多出口マッチング結果</h2>
+
+{# ── Seed info card ── #}
+<div class="card mb-4">
+    <div class="card-header">{{ seed.title }}</div>
+    <div class="card-body">
+        <div class="d-flex gap-4 flex-wrap mb-3">
+            <div>
+                <span class="stat-label">実行日時</span><br>
+                <span style="font-size:0.9rem">{{ result.executed_at }}</span>
+            </div>
+            <div>
+                <span class="stat-label">処理時間</span><br>
+                <span style="font-size:0.9rem">{{ result.duration_sec }}秒</span>
+            </div>
+            <div>
+                <span class="stat-label">対象企業</span><br>
+                <span style="font-size:0.9rem">{{ result.company_count }}社</span>
+            </div>
+            <div>
+                <span class="stat-label">出口数</span><br>
+                <span style="font-size:0.9rem">{{ result.exits|length }}種類</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ── Exit color map ── #}
+{% set exit_colors = {"rd": "#2563eb", "new_domain": "#7c3aed", "exploratory": "#059669"} %}
+
+{# ── Score dimensions to display per exit type ── #}
+{% set exit_display_dims = {
+    "rd": [
+        ("need_fit", "ニーズ適合"),
+        ("tech_prox", "技術近接性"),
+        ("abs_cap", "知識吸収能力"),
+        ("past_ties", "関係資本")
+    ],
+    "new_domain": [
+        ("ambition_fit", "野心領域適合"),
+        ("humanities_fit", "人文社会科学"),
+        ("open_inno", "エコシステム"),
+        ("future_option", "将来価値")
+    ],
+    "exploratory": [
+        ("theme_breadth", "テーマ広がり"),
+        ("humanities_fit", "人文社会科学"),
+        ("ambition_fit", "野心領域適合"),
+        ("open_inno", "エコシステム")
+    ]
+} %}
+
+{# ── Exit sections ── #}
+{% for exit in result.exits %}
+{% set color = exit_colors.get(exit.exit_type, "#6b7280") %}
+<div class="mb-5">
+    {# Exit header #}
+    <div class="mb-3" style="border-left:4px solid {{ color }};padding-left:1rem">
+        <h3 style="color:{{ color }};margin-bottom:0.25rem">{{ exit.exit_label }}</h3>
+        <p style="font-size:0.85rem;color:var(--color-text-muted);margin:0">{{ exit.exit_description }}</p>
+    </div>
+
+    {# Company cards for this exit #}
+    {% for rc in exit.rankings %}
+    <div class="card mb-3" style="border-left:3px solid {{ color }}">
+        <div class="card-header d-flex justify-content-between align-items-center" style="background:{{ color }}08">
+            <span>
+                <span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:{{ color }};color:#fff;font-size:0.75rem;font-weight:700;margin-right:0.5rem">{{ rc.rank }}</span>
+                <strong>{{ rc.company_name }}</strong>
+                <span class="badge ms-2" style="background:var(--color-muted-bg);color:var(--color-text-muted);font-size:0.7rem">{{ rc.industry }}</span>
+            </span>
+            <span style="font-size:0.9rem;font-weight:700;color:{{ color }}">{{ "%.3f"|format(rc.total_score) }}</span>
+        </div>
+        <div class="card-body">
+            {# Hypothesis text #}
+            {% if rc.overall_comment %}
+            <div class="mb-3" style="background:{{ color }}08;padding:0.85rem 1rem;border-radius:8px;font-size:0.85rem;line-height:1.8;color:var(--color-text)">
+                {{ rc.overall_comment }}
+            </div>
+            {% endif %}
+
+            {# Key scores bar display #}
+            {% set dims = exit_display_dims.get(exit.exit_type, []) %}
+            <div class="row">
+                {% for dim_key, dim_label in dims %}
+                {% set fr = rc.feature_scores.get(dim_key) %}
+                {% if fr %}
+                <div class="col-md-3 col-6 mb-2">
+                    <div style="font-size:0.75rem;color:var(--color-text-muted);margin-bottom:2px">{{ dim_label }}</div>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="score-bar" style="flex:1;height:6px">
+                            <div class="score-bar-fill" style="width:{{ (fr.value * 100)|int }}%;background:{{ color }}"></div>
+                        </div>
+                        <span style="font-size:0.8rem;font-weight:600;min-width:2.5em;text-align:right">{{ "%.2f"|format(fr.value) }}</span>
+                    </div>
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+
+            <div class="mt-2">
+                <a href="/company/{{ rc.edinet_code }}" class="btn btn-outline-secondary btn-sm">企業詳細</a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endfor %}
+
+<a href="/" class="btn btn-primary mt-3 mb-4">新しいシーズを入力</a>
+{% endblock %}

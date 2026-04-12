@@ -62,3 +62,37 @@ class Settings(BaseSettings):
 
 # Singleton instance — import this throughout the app
 settings = Settings()
+
+# Multi-exit scoring weights
+EXIT_WEIGHTS: dict[str, dict[str, float]] = {
+    "rd": {
+        "tech_prox": 0.20, "need_fit": 0.25, "abs_cap": 0.20,
+        "past_ties": 0.10, "open_inno": 0.10, "future_option": 0.00,
+        "humanities_fit": 0.05, "ambition_fit": 0.00, "theme_breadth": 0.00,
+        "synergy": 0.10,
+    },
+    "new_domain": {
+        "tech_prox": 0.05, "need_fit": 0.10, "abs_cap": 0.10,
+        "past_ties": 0.05, "open_inno": 0.15, "future_option": 0.15,
+        "humanities_fit": 0.15, "ambition_fit": 0.15, "theme_breadth": 0.05,
+        "synergy": 0.05,
+    },
+    "exploratory": {
+        "tech_prox": 0.05, "need_fit": 0.05, "abs_cap": 0.05,
+        "past_ties": 0.05, "open_inno": 0.10, "future_option": 0.10,
+        "humanities_fit": 0.20, "ambition_fit": 0.10, "theme_breadth": 0.25,
+        "synergy": 0.05,
+    },
+}
+
+EXIT_LABELS: dict[str, str] = {
+    "rd": "共同研究（R&D）",
+    "new_domain": "共同研究（新領域探索）",
+    "exploratory": "探索的対話",
+}
+
+EXIT_DESCRIPTIONS: dict[str, str] = {
+    "rd": "企業側に明確な技術課題・ニーズがあり、研究者のシーズが直接それに応える連携。成果は論文・特許・プロトタイプなど具体的。",
+    "new_domain": "企業が挑戦しようとしている新領域に、研究者の知見で貢献する連携。問いの設定自体に研究者が関わる。",
+    "exploratory": "具体的な共同研究の形はまだ見えないが、テーマ的な親和性がある。まず対話して接点を探る段階。",
+}

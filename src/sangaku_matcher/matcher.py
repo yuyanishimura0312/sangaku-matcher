@@ -1,11 +1,13 @@
-"""Matcher — orchestrate 6 scorers across all companies for a seed.
+"""Matcher — orchestrate scorers across all companies for a seed.
 
-Implements the Five-Layer Value Model:
+Implements the Five-Layer Value Model (run_match) and
+Multi-Exit Matching (run_multi_exit_match):
   Layer 1 (Technical):  tech_prox + need_fit
   Layer 2 (Relational): past_ties
   Layer 3 (Knowledge):  abs_cap
   Layer 4 (Future):     future_option
   Layer 5 (Ecosystem):  open_inno
+  + ambition_fit, theme_breadth for multi-exit scoring
 """
 from __future__ import annotations
 
@@ -17,7 +19,12 @@ from datetime import datetime
 
 import numpy as np
 
-from sangaku_matcher.config import settings
+from sangaku_matcher.config import (
+    settings,
+    EXIT_WEIGHTS,
+    EXIT_LABELS,
+    EXIT_DESCRIPTIONS,
+)
 from sangaku_matcher.db import connect
 from sangaku_matcher.scoring import FeatureResult
 from sangaku_matcher.scoring.tech_prox import TechProxScorer
@@ -27,6 +34,8 @@ from sangaku_matcher.scoring.past_ties import PastTiesScorer
 from sangaku_matcher.scoring.future_option import FutureOptionScorer
 from sangaku_matcher.scoring.open_inno import OpenInnoScorer
 from sangaku_matcher.scoring.theme_fit import ThemeFitScorer
+from sangaku_matcher.scoring.ambition_fit import AmbitionFitScorer
+from sangaku_matcher.scoring.theme_breadth import ThemeBreadthScorer
 from sangaku_matcher.seeds import Seed
 
 logger = logging.getLogger(__name__)
@@ -486,6 +495,234 @@ def run_match(seed: Seed, top_n: int | None = None) -> MatchResult:
 
     _save_match_result(result)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Multi-exit matching
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ExitRanking:
+    """Ranking for a single exit type."""
+    exit_type: str       # "rd", "new_domain", "exploratory"
+    exit_label: str      # "共同研究（R&D）" etc.
+    exit_description: str
+    rankings: list[RankedCompany] = field(default_factory=list)
+
+
+@dataclass
+class MultiExitMatchResult:
+    """Result of multi-exit matching across 3 collaboration types."""
+    seed: Seed
+    exits: list[ExitRanking] = field(default_factory=list)
+    executed_at: str = ""
+    duration_sec: float = 0.0
+    company_count: int = 0
+
+
+def _generate_exit_hypothesis(
+    exit_type: str,
+    company_name: str,
+    features: dict[str, FeatureResult],
+    theme_breadth_scorer: ThemeBreadthScorer,
+) -> str:
+    """Generate an exit-specific hypothesis text for a company."""
+    nf = features.get("need_fit", FeatureResult(0, ""))
+    tp = features.get("tech_prox", FeatureResult(0, ""))
+    ac = features.get("abs_cap", FeatureResult(0, ""))
+    pt = features.get("past_ties", FeatureResult(0, ""))
+    hf = features.get("humanities_fit", FeatureResult(0, ""))
+    oi = features.get("open_inno", FeatureResult(0, ""))
+    af = features.get("ambition_fit", FeatureResult(0, ""))
+    tb = features.get("theme_breadth", FeatureResult(0, ""))
+
+    if exit_type == "rd":
+        # Focus on need_fit, tech_prox, abs_cap
+        parts = [
+            f"{company_name}は技術ニーズとの一致度が高く(need_fit={nf.value:.2f})、"
+            f"シーズが直接対応可能。"
+        ]
+        if tp.value > 0.3:
+            parts.append(f"技術近接性(tech_prox={tp.value:.2f})も適度な距離にあり、知識移転が期待できる。")
+        if ac.value > 0.3:
+            parts.append(f"知識吸収能力(abs_cap={ac.value:.2f})が高く、共同研究契約に至りやすい候補。")
+        if pt.value > 0.2:
+            parts.append(f"過去の産学連携実績(past_ties={pt.value:.2f})もあり。")
+        return " ".join(parts)
+
+    elif exit_type == "new_domain":
+        # Focus on ambition_fit, humanities_fit, open_inno
+        parts = []
+        if af.value > 0.2:
+            af_rationale = af.rationale if af.rationale else ""
+            parts.append(
+                f"{company_name}は新領域への挑戦意欲が高い(ambition_fit={af.value:.2f})。"
+                f"{af_rationale}"
+            )
+        else:
+            parts.append(f"{company_name}の新領域適合度(ambition_fit={af.value:.2f})。")
+        if hf.value > 0.2:
+            parts.append(f"人文社会科学的知見との親和性(humanities_fit={hf.value:.2f})。")
+        if oi.value > 0.3:
+            parts.append(f"OI体制も整備(open_inno={oi.value:.2f})され、新領域探索の受け入れ態勢あり。")
+        return " ".join(parts)
+
+    else:  # exploratory
+        # Focus on theme_breadth with matching theme details
+        matching = theme_breadth_scorer.matching_themes
+        n_themes = len(matching)
+        if n_themes > 0:
+            theme_names = [m["label"] for m in matching[:5]]
+            parts = [
+                f"{company_name}とは{n_themes}個のテーマで接点: {', '.join(theme_names)}。"
+            ]
+        else:
+            parts = [f"{company_name}との直接的なテーマ接点は限定的。"]
+        if hf.value > 0.2:
+            parts.append(f"人文系親和性(humanities_fit={hf.value:.2f})。")
+        if af.value > 0.2:
+            parts.append(f"野心領域親和性(ambition_fit={af.value:.2f})。")
+        parts.append("まず対話を通じて連携の接点を探索することを推奨。")
+        return " ".join(parts)
+
+
+def run_multi_exit_match(seed: Seed, top_n: int | None = None) -> MultiExitMatchResult:
+    """Score all companies using 9 dimensions, then rank by 3 exit types."""
+    top_n = top_n or settings.default_top_n
+    start = time.time()
+
+    with connect(settings.matcher_db_path) as conn:
+        companies = _load_companies(conn)
+        industry_stats = _load_industry_stats(conn)
+        collab_data = _load_collaboration_data(conn)
+
+    # Initialize all 9 scorers
+    tech_prox = TechProxScorer()
+
+    need_fit = NeedFitScorer()
+
+    abs_cap = AbsCapScorer()
+    abs_cap.set_industry_stats(industry_stats)
+
+    past_ties = PastTiesScorer()
+    past_ties.set_collaboration_data(collab_data)
+
+    future_option = FutureOptionScorer()
+    future_option.set_industry_stats(industry_stats)
+
+    open_inno = OpenInnoScorer()
+    open_inno.set_collaboration_data(collab_data)
+    open_inno.set_industry_stats(industry_stats)
+
+    humanities_fit = ThemeFitScorer()
+
+    ambition_fit = AmbitionFitScorer()
+
+    theme_breadth = ThemeBreadthScorer()
+
+    # Load theme data for GTA-based scoring
+    with connect(settings.matcher_db_path) as theme_conn:
+        humanities_fit.load_themes(theme_conn)
+        ambition_fit.load_themes(theme_conn)
+        theme_breadth.load_all_themes(theme_conn)
+
+    humanities_fit.precompute_seed_themes(seed.semantic_vector)
+    ambition_fit.precompute_seed_themes(seed.semantic_vector)
+    theme_breadth.precompute_seed_themes(seed.semantic_vector)
+
+    # Pre-compute similarity distributions for z-score normalization
+    need_fit.precompute_distribution(seed.semantic_vector, companies)
+
+    # All 9 scorers (no weights here; we apply exit-specific weights later)
+    scorers = [
+        tech_prox, need_fit, abs_cap, past_ties,
+        future_option, open_inno, humanities_fit,
+        ambition_fit, theme_breadth,
+    ]
+
+    # Score all companies once across all 9 dimensions + synergy
+    scored_companies: list[tuple[dict, dict[str, FeatureResult]]] = []
+
+    for co in companies:
+        features: dict[str, FeatureResult] = {}
+        for scorer in scorers:
+            result = scorer.score(seed.semantic_vector, co)
+            features[scorer.name] = result
+
+        # Cross-dimensional synergy bonus (same as run_match)
+        nf_val = features.get("need_fit", FeatureResult(0, "")).value
+        hf_val = features.get("humanities_fit", FeatureResult(0, "")).value
+        oi_val = features.get("open_inno", FeatureResult(0, "")).value
+        synergy = (nf_val * hf_val) ** 0.5
+        if oi_val > 0.3:
+            synergy *= 1.0 + 0.2 * oi_val
+        synergy = min(1.0, synergy)
+        features["synergy"] = FeatureResult(
+            value=round(synergy, 4),
+            rationale=(
+                f"技術ニーズ({nf_val:.2f})x人文系({hf_val:.2f})の"
+                f"領域横断的シナジー。"
+                + (f"OI体制({oi_val:.2f})による増幅効果あり。" if oi_val > 0.3 else "")
+            ),
+        )
+
+        scored_companies.append((co, features))
+
+    # Build rankings for each exit type
+    exits: list[ExitRanking] = []
+
+    for exit_type in ("rd", "new_domain", "exploratory"):
+        weights = EXIT_WEIGHTS[exit_type]
+
+        # Compute weighted total for each company
+        exit_scored: list[tuple[float, dict, dict[str, FeatureResult]]] = []
+        for co, features in scored_companies:
+            total = 0.0
+            for dim_name, w in weights.items():
+                if w <= 0:
+                    continue
+                fr = features.get(dim_name, FeatureResult(0, ""))
+                total += w * fr.value
+            exit_scored.append((total, co, features))
+
+        exit_scored.sort(key=lambda x: x[0], reverse=True)
+        top = exit_scored[:top_n]
+
+        rankings = []
+        for rank_idx, (total, co, features) in enumerate(top, 1):
+            # Re-score theme_breadth for this specific company to populate matching_themes
+            theme_breadth.score(seed.semantic_vector, co)
+
+            hypothesis = _generate_exit_hypothesis(
+                exit_type, co["name"], features, theme_breadth,
+            )
+
+            rankings.append(RankedCompany(
+                rank=rank_idx,
+                edinet_code=co["edinet_code"],
+                company_name=co["name"],
+                industry=co.get("industry", ""),
+                total_score=round(total, 4),
+                feature_scores=features,
+                recommended_mode=exit_type,
+                overall_comment=hypothesis,
+            ))
+
+        exits.append(ExitRanking(
+            exit_type=exit_type,
+            exit_label=EXIT_LABELS[exit_type],
+            exit_description=EXIT_DESCRIPTIONS[exit_type],
+            rankings=rankings,
+        ))
+
+    duration = time.time() - start
+    return MultiExitMatchResult(
+        seed=seed,
+        exits=exits,
+        executed_at=datetime.now().isoformat(timespec="seconds"),
+        duration_sec=round(duration, 2),
+        company_count=len(companies),
+    )
 
 
 def _save_match_result(result: MatchResult) -> None:

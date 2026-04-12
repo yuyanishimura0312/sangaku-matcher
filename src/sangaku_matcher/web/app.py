@@ -48,7 +48,7 @@ async def match(
     top_n: int = Form(10),
 ):
     from sangaku_matcher.seeds import parse_seed
-    from sangaku_matcher.matcher import run_match
+    from sangaku_matcher.matcher import run_multi_exit_match
 
     # Clamp top_n to a safe range to prevent excessive queries or zero-result runs
     top_n = max(1, min(top_n, 50))
@@ -60,7 +60,7 @@ async def match(
             doi=doi or None,
             patent_no=patent_no or None,
         )
-        result = run_match(seed, top_n=top_n)
+        result = run_multi_exit_match(seed, top_n=top_n)
     except ValueError as e:
         return templates.TemplateResponse(request, "home.html", {
             "company_count": _company_count(),
@@ -72,7 +72,7 @@ async def match(
             "error": "マッチング処理中にエラーが発生しました。入力内容を確認してください。",
         })
 
-    return templates.TemplateResponse(request, "result.html", {
+    return templates.TemplateResponse(request, "multi_exit_result.html", {
         "result": result,
         "seed": seed,
     })
@@ -557,8 +557,7 @@ async def company_detail(request: Request, edinet_code: str):
 @app.post("/api/match")
 async def api_match(payload: dict):
     from sangaku_matcher.seeds import parse_seed
-    from sangaku_matcher.matcher import run_match
-    from sangaku_matcher.reporter import to_json
+    from sangaku_matcher.matcher import run_multi_exit_match
 
     # Validate required field
     description = payload.get("description", "")
@@ -579,7 +578,7 @@ async def api_match(payload: dict):
             doi=payload.get("doi"),
             patent_no=payload.get("patent_no"),
         )
-        result = run_match(seed, top_n=top_n)
+        result = run_multi_exit_match(seed, top_n=top_n)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=422)
     except Exception:
@@ -588,4 +587,45 @@ async def api_match(payload: dict):
             status_code=500,
         )
 
-    return to_json(result)
+    # Serialize multi-exit result to JSON
+    return _multi_exit_to_json(result)
+
+
+def _multi_exit_to_json(result) -> dict:
+    """Serialize MultiExitMatchResult to JSON-compatible dict."""
+    return {
+        "seed": {
+            "seed_id": result.seed.seed_id,
+            "title": result.seed.title,
+            "description": result.seed.description[:500],
+            "doi": result.seed.doi,
+            "patent_no": result.seed.patent_no,
+            "source_type": result.seed.source_type,
+        },
+        "executed_at": result.executed_at,
+        "duration_sec": result.duration_sec,
+        "company_count": result.company_count,
+        "exits": [
+            {
+                "exit_type": ex.exit_type,
+                "exit_label": ex.exit_label,
+                "exit_description": ex.exit_description,
+                "rankings": [
+                    {
+                        "rank": rc.rank,
+                        "edinet_code": rc.edinet_code,
+                        "company_name": rc.company_name,
+                        "industry": rc.industry,
+                        "total_score": rc.total_score,
+                        "feature_scores": {
+                            k: {"value": v.value, "rationale": v.rationale}
+                            for k, v in rc.feature_scores.items()
+                        },
+                        "hypothesis": rc.overall_comment,
+                    }
+                    for rc in ex.rankings
+                ],
+            }
+            for ex in result.exits
+        ],
+    }
