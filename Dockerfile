@@ -44,8 +44,11 @@ print('Quantized model cached')" && \
 RUN apt-get purge -y gcc g++ && apt-get autoremove -y && \
     rm -rf /root/.cache /tmp/*
 
-# Copy pre-built database
+# Copy pre-built database and taxonomy files
 COPY data/matcher.db data/matcher.db
+COPY data/theme_taxonomy.json data/theme_taxonomy.json
+COPY data/tech_taxonomy.json data/tech_taxonomy.json
+COPY data/ambition_taxonomy.json data/ambition_taxonomy.json
 
 # Use ONNX backend with quantized local model
 ENV USE_ONNX=1
