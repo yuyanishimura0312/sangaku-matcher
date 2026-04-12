@@ -78,6 +78,29 @@ async def match(
     })
 
 
+@app.post("/hypothesis", response_class=HTMLResponse)
+async def hypothesis_match(
+    request: Request,
+    description: str = Form(...),
+    top_n: int = Form(10),
+):
+    """Theme-based hypothesis matching — uses 122 themes across 3 axes."""
+    from sangaku_matcher.theme_matcher import run_theme_match
+
+    top_n = max(1, min(top_n, 30))
+    try:
+        result = run_theme_match(description, top_n=top_n)
+    except Exception as e:
+        return templates.TemplateResponse(request, "home.html", {
+            "company_count": _company_count(),
+            "error": f"仮説構築中にエラーが発生しました: {e}",
+        })
+
+    return templates.TemplateResponse(request, "hypothesis_result.html", {
+        "result": result,
+    })
+
+
 def _load_match_result(seed_id: str):
     """Load a saved match result from DB. Returns (seed, result) or (None, None)."""
     from sangaku_matcher.matcher import (

@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}連携仮説 -- sangaku-matcher{% endblock %}
+{% block content %}
+<h2>連携仮説</h2>
+
+{# Researcher Input #}
+<div class="card mb-4">
+    <div class="card-body" style="background:var(--color-muted-bg)">
+        <p style="font-size:0.92rem;font-weight:500;margin-bottom:0.5rem">入力された研究テーマ:</p>
+        <p style="font-size:0.88rem;margin-bottom:0.75rem">{{ result.researcher_text }}</p>
+        <div class="d-flex gap-2 flex-wrap">
+            <span class="badge" style="background:var(--color-accent);color:#fff;font-size:0.75rem;padding:0.3em 0.7em">{{ result.theme_count }}テーマで分析</span>
+            <span class="badge" style="background:var(--color-muted-bg);border:1px solid var(--color-border);color:var(--color-text-muted);font-size:0.75rem;padding:0.3em 0.7em">{{ result.companies|length }}社の連携候補</span>
+        </div>
+    </div>
+</div>
+
+{# Researcher Profile - Top Themes #}
+<div class="card mb-4">
+    <div class="card-header" style="font-size:0.88rem;font-weight:600">研究テーマの親和テーマ分析</div>
+    <div class="card-body" style="padding:0.75rem">
+        <div class="row">
+            {% for key, info in result.researcher_profile.items() %}
+            {% set axis = key.split(':')[0] %}
+            {% set axis_color = {"humanities": "#8B6914", "tech": "#1565C0", "ambition": "#C62828"}.get(axis, "#666") %}
+            {% set axis_label = {"humanities": "社会", "tech": "技術", "ambition": "野心"}.get(axis, axis) %}
+            <div class="col-md-6 col-lg-4 mb-2">
+                <div style="display:flex;align-items:center;gap:0.5rem;padding:0.4rem 0.6rem;border-radius:6px;background:#fff;border:1px solid var(--color-border)">
+                    <span style="font-size:0.65rem;font-weight:600;color:#fff;background:{{ axis_color }};padding:0.15em 0.4em;border-radius:3px;white-space:nowrap">{{ axis_label }}</span>
+                    <span style="font-size:0.8rem;flex:1">{{ info.name }}</span>
+                    <span style="font-size:0.75rem;font-weight:600;color:{{ axis_color }}">{{ "%.0f"|format(info.affinity * 100) }}%</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+{# Company Results #}
+{% for company in result.companies %}
+<div class="card mb-4" id="company-{{ loop.index }}">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <div>
+            <span style="font-size:1.1rem;font-weight:700;color:var(--color-accent);margin-right:0.5rem">{{ loop.index }}</span>
+            <a href="/company/{{ company.edinet_code }}" style="font-weight:600;font-size:1rem;color:var(--color-text)">{{ company.company_name }}</a>
+            <span class="badge" style="background:var(--color-muted-bg);color:var(--color-text-muted);font-size:0.72rem;margin-left:0.5rem">{{ company.industry }}</span>
+        </div>
+        <span style="font-size:0.85rem;font-weight:600;color:var(--color-accent)">Score {{ "%.1f"|format(company.total_score) }}</span>
+    </div>
+    <div class="card-body">
+        {# Hypothesis Text #}
+        <div style="background:var(--color-muted-bg);padding:1rem;border-radius:8px;margin-bottom:1rem;font-size:0.88rem;line-height:1.8">
+            {{ company.hypothesis_text }}
+        </div>
+
+        {# Theme Matches #}
+        {% if company.theme_matches %}
+        <h6 style="font-size:0.82rem;font-weight:600;color:var(--color-text-muted);margin-bottom:0.75rem">テーマ別マッチング詳細</h6>
+        <div class="row">
+            {% for tm in company.theme_matches %}
+            {% set axis_color = {"humanities": "#8B6914", "tech": "#1565C0", "ambition": "#C62828"}.get(tm.axis, "#666") %}
+            {% set axis_label = {"humanities": "社会", "tech": "技術", "ambition": "野心"}.get(tm.axis, tm.axis) %}
+            <div class="col-md-6 mb-2">
+                <div style="border:1px solid var(--color-border);border-radius:8px;padding:0.75rem;height:100%">
+                    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
+                        <span style="font-size:0.65rem;font-weight:600;color:#fff;background:{{ axis_color }};padding:0.15em 0.4em;border-radius:3px">{{ axis_label }}</span>
+                        <span style="font-size:0.82rem;font-weight:600">{{ tm.theme_name }}</span>
+                    </div>
+                    <div style="font-size:0.75rem;color:var(--color-text-subtle);margin-bottom:0.25rem">{{ tm.major_name }}</div>
+                    <div style="display:flex;gap:1rem;font-size:0.78rem">
+                        <span>研究者: <strong style="color:{{ axis_color }}">{{ "%.0f"|format(tm.researcher_affinity * 100) }}%</strong></span>
+                        <span>企業: <strong>{{ "%.0f"|format(tm.company_strength * 100) }}%</strong></span>
+                    </div>
+                    {% if tm.humanities_role %}
+                    <div style="font-size:0.73rem;color:var(--color-text-muted);margin-top:0.5rem;padding-top:0.5rem;border-top:1px solid var(--color-border);line-height:1.5">
+                        {{ tm.humanities_role }}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+
+<a href="/" class="btn btn-outline-secondary mt-3">新しいテーマで検索</a>
+{% endblock %}

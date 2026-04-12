@@ -2,8 +2,8 @@
 {% block title %}sangaku-matcher -- AI解析{% endblock %}
 {% block content %}
 <div class="hero-input">
-    <h2>技術シーズをAI解析</h2>
-    <p class="text-muted">技術の説明を入力するだけで、{{ company_count }}社のデータベースから連携候補をAIが提案します。</p>
+    <h2>研究者と企業の連携仮説を構築</h2>
+    <p class="text-muted">研究テーマを入力すると、{{ company_count }}社のデータベースから122テーマ（技術49・社会33・野心40）を横断的に分析し、連携の仮説を構築します。</p>
 
     {% if error %}
     <div class="alert alert-danger" role="alert">
@@ -11,21 +11,30 @@
     </div>
     {% endif %}
 
-    <form method="post" action="/match" id="match-form">
+    <form method="post" action="/hypothesis" id="hypothesis-form">
         <textarea class="form-control" id="description" name="description" rows="6"
-                  placeholder="技術の概要を入力してください&#10;&#10;例: 酸化チタン系光触媒を用いて、可視光下で水中の有機汚染物質を分解する手法。従来手法と比較して触媒効率が3倍向上し、産業排水処理への応用が期待される。"
+                  placeholder="研究テーマの概要を入力してください&#10;&#10;例1: デザイン人類学的手法による組織文化の理解と社会課題解決。フィールドワークを通じた暗黙知の可視化と組織変革への応用。&#10;&#10;例2: 酸化チタン系光触媒を用いた水処理技術。従来手法と比較して触媒効率が3倍向上し、産業排水処理への応用が期待される。&#10;&#10;例3: AIの意思決定プロセスにおける公正性と説明可能性の研究。アルゴリズムバイアスの検出手法と社会実装ガイドライン策定。"
                   required minlength="10"
-                  aria-label="技術シーズの説明"></textarea>
-        <button type="submit" class="btn btn-primary btn-lg w-100 mt-3" id="submit-btn">AI解析を実行</button>
+                  aria-label="研究テーマの説明"></textarea>
+        <button type="submit" class="btn btn-primary btn-lg w-100 mt-3" id="submit-btn">仮説を構築</button>
     </form>
+
+    <div style="margin-top:1.5rem;padding:1rem;background:var(--color-muted-bg);border-radius:8px">
+        <p style="font-size:0.82rem;color:var(--color-text-muted);margin:0;line-height:1.7">
+            <strong>3軸122テーマによるマッチング:</strong>
+            有価証券報告書のテキストをGTAに着想を得たボトムアップ分析で構造化した3つのテーマ体系を使い、研究テーマとの多角的な連携仮説を構築します。
+            技術的接点だけでなく、企業の新規事業野心や社会的課題への関心も含めた「なぜ連携すべきか」の仮説を提示します。
+            <a href="/themes" style="color:var(--color-accent)">テーマ体系の詳細</a>
+        </p>
+    </div>
 </div>
 
 <script>
-document.getElementById('match-form').addEventListener('submit', function() {
+document.getElementById('hypothesis-form').addEventListener('submit', function() {
     const btn = document.getElementById('submit-btn');
     btn.disabled = true;
     btn.classList.add('btn-loading');
-    btn.textContent = '解析中';
+    btn.textContent = '仮説構築中...';
 });
 </script>
 {% endblock %}
