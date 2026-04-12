@@ -6,15 +6,15 @@
     "synergy": 0.10
   },
   "new_domain": {
-    "tech_prox": 0.05, "need_fit": 0.10, "abs_cap": 0.10,
+    "tech_prox": 0.00, "need_fit": 0.10, "abs_cap": 0.10,
     "past_ties": 0.05, "open_inno": 0.15, "future_option": 0.15,
-    "humanities_fit": 0.15, "ambition_fit": 0.15, "theme_breadth": 0.05,
+    "humanities_fit": 0.15, "ambition_fit": 0.20, "theme_breadth": 0.05,
     "synergy": 0.05
   },
   "exploratory": {
-    "tech_prox": 0.05, "need_fit": 0.05, "abs_cap": 0.05,
-    "past_ties": 0.05, "open_inno": 0.10, "future_option": 0.10,
-    "humanities_fit": 0.20, "ambition_fit": 0.10, "theme_breadth": 0.25,
+    "tech_prox": -0.10, "need_fit": -0.05, "abs_cap": 0.05,
+    "past_ties": 0.05, "open_inno": 0.10, "future_option": 0.15,
+    "humanities_fit": 0.25, "ambition_fit": 0.10, "theme_breadth": 0.30,
     "synergy": 0.05
   }
 }

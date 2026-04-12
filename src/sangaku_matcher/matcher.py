@@ -511,10 +511,27 @@ class ExitRanking:
 
 
 @dataclass
+class ResearcherProfile:
+    """Researcher type inferred from theme affinity pattern.
+
+    Based on Stokes (1997) Pasteur's Quadrant and D'Este & Perkmann (2011).
+    Classifies researchers into four types and recommends the best exit route.
+    """
+    researcher_type: str   # "applied", "basic", "pasteur", "interdisciplinary"
+    type_label: str        # "応用志向（エジソン型）" etc.
+    recommended_exit: str  # "rd", "new_domain", "exploratory"
+    recommendation_text: str
+    tech_affinity: float    # average affinity to tech themes
+    humanities_affinity: float  # average affinity to humanities themes
+    ambition_affinity: float   # average affinity to ambition themes
+
+
+@dataclass
 class MultiExitMatchResult:
     """Result of multi-exit matching across 3 collaboration types."""
     seed: Seed
     exits: list[ExitRanking] = field(default_factory=list)
+    researcher_profile: ResearcherProfile | None = None
     executed_at: str = ""
     duration_sec: float = 0.0
     company_count: int = 0
@@ -660,6 +677,92 @@ def _mmr_rerank(
     return [candidates[i] for i in selected]
 
 
+def _infer_researcher_type(
+    seed_vector: np.ndarray,
+    humanities_themes: list[dict],
+    tech_themes: list[dict],
+    ambition_themes: list[dict],
+) -> ResearcherProfile:
+    """Infer researcher type from theme affinity pattern.
+
+    Based on Stokes (1997) Pasteur's Quadrant and D'Este & Perkmann (2011).
+    Computes average cosine similarity of the seed vector to each axis's
+    theme centroids, then classifies into one of four types.
+    """
+    norm = np.linalg.norm(seed_vector)
+    sv_norm = seed_vector / max(norm, 1e-10)
+
+    def avg_affinity(themes: list[dict]) -> float:
+        if not themes:
+            return 0.0
+        centroids = np.array([t["centroid"] for t in themes])
+        sims = centroids @ sv_norm
+        return float(np.mean(sims))
+
+    tech_aff = avg_affinity(tech_themes)
+    hum_aff = avg_affinity(humanities_themes)
+    amb_aff = avg_affinity(ambition_themes)
+
+    # Classification based on relative affinities:
+    #   Tech-dominant  -> applied/Edison    -> R&D collaboration
+    #   Humanities-dom -> basic/Bohr        -> exploratory dialogue
+    #   Ambition-dom   -> Pasteur           -> new domain exploration
+    #   Balanced       -> interdisciplinary -> new domain exploration
+    if tech_aff > hum_aff + 0.02 and tech_aff > amb_aff:
+        return ResearcherProfile(
+            researcher_type="applied",
+            type_label="応用志向（エジソン型）",
+            recommended_exit="rd",
+            recommendation_text=(
+                "技術テーマへの親和性が高く、R&D共同研究が最も有望なルートです。"
+                "企業の具体的な技術課題に直接応えられる連携が期待できます。"
+            ),
+            tech_affinity=tech_aff,
+            humanities_affinity=hum_aff,
+            ambition_affinity=amb_aff,
+        )
+    elif hum_aff > tech_aff + 0.02 and hum_aff > amb_aff:
+        return ResearcherProfile(
+            researcher_type="basic",
+            type_label="基礎志向（ボーア型）",
+            recommended_exit="exploratory",
+            recommendation_text=(
+                "人文社会科学テーマへの親和性が高く、探索的対話が最も有望なルートです。"
+                "企業との対話から新たな研究課題や連携テーマが見つかる可能性があります。"
+            ),
+            tech_affinity=tech_aff,
+            humanities_affinity=hum_aff,
+            ambition_affinity=amb_aff,
+        )
+    elif amb_aff > tech_aff and amb_aff > hum_aff:
+        return ResearcherProfile(
+            researcher_type="pasteur",
+            type_label="用途触発型（パスツール型）",
+            recommended_exit="new_domain",
+            recommendation_text=(
+                "新領域・野心テーマへの親和性が高く、新領域探索型共同研究が最も有望なルートです。"
+                "企業が挑戦する新領域に研究知見で貢献できます。"
+            ),
+            tech_affinity=tech_aff,
+            humanities_affinity=hum_aff,
+            ambition_affinity=amb_aff,
+        )
+    else:
+        return ResearcherProfile(
+            researcher_type="interdisciplinary",
+            type_label="学際型",
+            recommended_exit="new_domain",
+            recommendation_text=(
+                "技術・人文・野心の各テーマにバランスよく親和性があり、"
+                "新領域探索型共同研究が有望です。"
+                "分野横断的な視点を活かした連携が期待できます。"
+            ),
+            tech_affinity=tech_aff,
+            humanities_affinity=hum_aff,
+            ambition_affinity=amb_aff,
+        )
+
+
 def run_multi_exit_match(seed: Seed, top_n: int | None = None) -> MultiExitMatchResult:
     """Score all companies using 9 dimensions, then rank by 3 exit types.
 
@@ -720,6 +823,16 @@ def run_multi_exit_match(seed: Seed, top_n: int | None = None) -> MultiExitMatch
     ambition_fit.precompute_seed_themes(seed.semantic_vector)
     theme_breadth.precompute_seed_themes(seed.semantic_vector)
 
+    # Infer researcher type from theme affinities (Stokes 1997 / D'Este & Perkmann 2011)
+    researcher_profile = _infer_researcher_type(
+        seed.semantic_vector,
+        humanities_themes=humanities_fit._themes or [],
+        tech_themes=[
+            t for t in (theme_breadth._all_themes or []) if t["axis"] == "tech"
+        ],
+        ambition_themes=ambition_fit._themes or [],
+    )
+
     # Pre-compute similarity distributions for z-score normalization
     need_fit.precompute_distribution(seed.semantic_vector, companies)
 
@@ -763,45 +876,64 @@ def run_multi_exit_match(seed: Seed, top_n: int | None = None) -> MultiExitMatch
 
         scored_companies.append((co, features, cached_matching_themes))
 
-    # Build rankings for each exit type
-    exits: list[ExitRanking] = []
+    # --- Exclusive assignment (ACM Web Conference 2024 CCDF paper) ---
+    # Step 1: Compute all 3 exit scores for every company
+    exit_types = ("rd", "new_domain", "exploratory")
+    # company_exit_data[edinet_code] = {exit_type: (score, co, features, matching_themes)}
+    company_exit_data: dict[str, dict[str, tuple[float, dict, dict, list]]] = {}
 
-    for exit_type in ("rd", "new_domain", "exploratory"):
-        weights = EXIT_WEIGHTS[exit_type]
-
-        # Compute weighted total for each company
-        exit_scored: list[tuple[float, dict, dict[str, FeatureResult], list[dict]]] = []
-        for co, features, matching_themes in scored_companies:
+    for co, features, matching_themes in scored_companies:
+        ec = co["edinet_code"]
+        company_exit_data[ec] = {}
+        for exit_type in exit_types:
+            weights = EXIT_WEIGHTS[exit_type]
             total = 0.0
             for dim_name, w in weights.items():
-                if w <= 0:
+                # Allow negative weights (Nooteboom 2007: cognitive distance penalty)
+                if w == 0:
                     continue
                 fr = features.get(dim_name, FeatureResult(0, ""))
                 total += w * fr.value
-            exit_scored.append((total, co, features, matching_themes))
+            company_exit_data[ec][exit_type] = (total, co, features, matching_themes)
 
+    # Step 2: Exclusive assignment — each company goes to its highest-scoring exit
+    company_assignments: dict[str, str] = {}
+    for ec, exit_scores in company_exit_data.items():
+        best_exit = max(exit_scores, key=lambda et: exit_scores[et][0])
+        company_assignments[ec] = best_exit
+
+    # Step 3: Build per-exit candidate lists (only assigned companies)
+    exits: list[ExitRanking] = []
+
+    # Order exits so the recommended one comes first
+    recommended = researcher_profile.recommended_exit if researcher_profile else "rd"
+    other_exits = [et for et in exit_types if et != recommended]
+    ordered_exits = [recommended] + other_exits
+
+    for exit_type in ordered_exits:
+        # Filter to companies assigned to this exit
+        exit_scored: list[tuple[float, dict, dict[str, FeatureResult], list[dict]]] = [
+            company_exit_data[ec][exit_type]
+            for ec, assigned in company_assignments.items()
+            if assigned == exit_type
+        ]
         exit_scored.sort(key=lambda x: x[0], reverse=True)
 
         # Apply exit-specific reranking for diversity
         if exit_type == "exploratory":
-            # MMR reranking for diversity (lambda=0.5: balanced)
             pool = exit_scored[:top_n * 3]
             top = _mmr_rerank(pool, top_n, lambda_param=0.5)
         elif exit_type == "new_domain":
-            # Mild diversity reranking (lambda=0.7: mostly relevance)
             pool = exit_scored[:top_n * 2]
             top = _mmr_rerank(pool, top_n, lambda_param=0.7)
         else:
-            # R&D: pure score ranking, no reranking
             top = exit_scored[:top_n]
 
         rankings = []
         for rank_idx, (total, co, features, matching_themes) in enumerate(top, 1):
-            # Use cached matching_themes from scoring phase — no second score() call needed
             hypothesis = _generate_exit_hypothesis(
                 exit_type, co["name"], features, matching_themes,
             )
-
             rankings.append(RankedCompany(
                 rank=rank_idx,
                 edinet_code=co["edinet_code"],
@@ -824,6 +956,7 @@ def run_multi_exit_match(seed: Seed, top_n: int | None = None) -> MultiExitMatch
     result = MultiExitMatchResult(
         seed=seed,
         exits=exits,
+        researcher_profile=researcher_profile,
         executed_at=datetime.now().isoformat(timespec="seconds"),
         duration_sec=round(duration, 2),
         company_count=len(companies),

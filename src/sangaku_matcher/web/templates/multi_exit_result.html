@@ -28,6 +28,28 @@
     </div>
 </div>
 
+{# ── Researcher profile card (Stokes 1997 / D'Este & Perkmann 2011) ── #}
+{% if result.researcher_profile %}
+<div class="card mb-4" style="border-left: 4px solid var(--color-accent, #7c3aed)">
+    <div class="card-body">
+        <h5 style="font-size:0.92rem;font-weight:600;margin-bottom:0.5rem">
+            研究者プロファイル分析
+        </h5>
+        <p style="font-size:0.88rem;margin-bottom:0.5rem">
+            <strong>タイプ:</strong> {{ result.researcher_profile.type_label }}
+        </p>
+        <p style="font-size:0.85rem;color:var(--color-text-muted);margin-bottom:0.75rem">
+            {{ result.researcher_profile.recommendation_text }}
+        </p>
+        <div class="d-flex gap-3" style="font-size:0.8rem">
+            <span>技術親和: {{ "%.0f"|format(result.researcher_profile.tech_affinity * 100) }}%</span>
+            <span>人文親和: {{ "%.0f"|format(result.researcher_profile.humanities_affinity * 100) }}%</span>
+            <span>野心親和: {{ "%.0f"|format(result.researcher_profile.ambition_affinity * 100) }}%</span>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 {# ── Exit color map ── #}
 {% set exit_colors = {"rd": "#2563eb", "new_domain": "#7c3aed", "exploratory": "#059669"} %}
 
@@ -59,7 +81,11 @@
 <div class="mb-5">
     {# Exit header #}
     <div class="mb-3" style="border-left:4px solid {{ color }};padding-left:1rem">
-        <h3 style="color:{{ color }};margin-bottom:0.25rem">{{ exit.exit_label }}</h3>
+        <h3 style="color:{{ color }};margin-bottom:0.25rem">{{ exit.exit_label }}
+            {% if result.researcher_profile and exit.exit_type == result.researcher_profile.recommended_exit %}
+            <span style="display:inline-block;font-size:0.65rem;font-weight:600;padding:2px 8px;border-radius:4px;background:#059669;color:#fff;vertical-align:middle;margin-left:0.5rem">おすすめ</span>
+            {% endif %}
+        </h3>
         <p style="font-size:0.85rem;color:var(--color-text-muted);margin:0">{{ exit.exit_description }}</p>
     </div>
 

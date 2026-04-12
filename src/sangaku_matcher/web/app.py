@@ -746,7 +746,7 @@ async def api_match(payload: dict):
 
 def _multi_exit_to_json(result) -> dict:
     """Serialize MultiExitMatchResult to JSON-compatible dict."""
-    return {
+    data = {
         "seed": {
             "seed_id": result.seed.seed_id,
             "title": result.seed.title,
@@ -782,3 +782,16 @@ def _multi_exit_to_json(result) -> dict:
             for ex in result.exits
         ],
     }
+    # Include researcher profile if available (Stokes 1997 classification)
+    rp = getattr(result, "researcher_profile", None)
+    if rp:
+        data["researcher_profile"] = {
+            "researcher_type": rp.researcher_type,
+            "type_label": rp.type_label,
+            "recommended_exit": rp.recommended_exit,
+            "recommendation_text": rp.recommendation_text,
+            "tech_affinity": round(rp.tech_affinity, 4),
+            "humanities_affinity": round(rp.humanities_affinity, 4),
+            "ambition_affinity": round(rp.ambition_affinity, 4),
+        }
+    return data

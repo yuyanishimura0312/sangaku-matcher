@@ -67,22 +67,28 @@ settings = Settings()
 
 # Default multi-exit scoring weights (used when no JSON override exists)
 _DEFAULT_EXIT_WEIGHTS: dict[str, dict[str, float]] = {
+    # R&D collaboration: tech match is key. Closer is better.
     "rd": {
         "tech_prox": 0.20, "need_fit": 0.25, "abs_cap": 0.20,
         "past_ties": 0.10, "open_inno": 0.10, "future_option": 0.00,
         "humanities_fit": 0.05, "ambition_fit": 0.00, "theme_breadth": 0.00,
         "synergy": 0.10,
     },
+    # New domain exploration: ambition themes and humanities connection are core.
+    # Tech proximity is neutral (distance handled by future_option).
     "new_domain": {
-        "tech_prox": 0.05, "need_fit": 0.10, "abs_cap": 0.10,
+        "tech_prox": 0.00, "need_fit": 0.10, "abs_cap": 0.10,
         "past_ties": 0.05, "open_inno": 0.15, "future_option": 0.15,
-        "humanities_fit": 0.15, "ambition_fit": 0.15, "theme_breadth": 0.05,
+        "humanities_fit": 0.15, "ambition_fit": 0.20, "theme_breadth": 0.05,
         "synergy": 0.05,
     },
+    # Exploratory dialogue: theme breadth and humanities are core.
+    # Negative weights on tech_prox / need_fit per Nooteboom (2007):
+    # cognitively distant partners are better for exploration.
     "exploratory": {
-        "tech_prox": 0.05, "need_fit": 0.05, "abs_cap": 0.05,
-        "past_ties": 0.05, "open_inno": 0.10, "future_option": 0.10,
-        "humanities_fit": 0.20, "ambition_fit": 0.10, "theme_breadth": 0.25,
+        "tech_prox": -0.10, "need_fit": -0.05, "abs_cap": 0.05,
+        "past_ties": 0.05, "open_inno": 0.10, "future_option": 0.15,
+        "humanities_fit": 0.25, "ambition_fit": 0.10, "theme_breadth": 0.30,
         "synergy": 0.05,
     },
 }
@@ -106,13 +112,20 @@ def _load_exit_weights() -> dict[str, dict[str, float]]:
             try:
                 with open(p) as f:
                     loaded = json.load(f)
-                # Validate: each exit must have weights summing to ~1.0
+                # Validate: each exit must have at least one positive weight
+                # and all values must be numeric (negative weights are allowed
+                # per Nooteboom 2007 — e.g. exploratory penalizes tech_prox).
                 for exit_type, weights in loaded.items():
-                    total = sum(weights.values())
-                    if abs(total - 1.0) > 0.01:
+                    if not any(w > 0 for w in weights.values()):
                         _config_logger.warning(
-                            "Exit weights for %s sum to %.3f (expected 1.0), using defaults",
-                            exit_type, total,
+                            "Exit weights for %s have no positive weights, using defaults",
+                            exit_type,
+                        )
+                        return _DEFAULT_EXIT_WEIGHTS
+                    if any(v is None for v in weights.values()):
+                        _config_logger.warning(
+                            "Exit weights for %s contain None values, using defaults",
+                            exit_type,
                         )
                         return _DEFAULT_EXIT_WEIGHTS
                 _config_logger.info("Loaded exit weights from %s", p)
