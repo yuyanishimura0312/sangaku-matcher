@@ -896,11 +896,31 @@ def run_multi_exit_match(seed: Seed, top_n: int | None = None) -> MultiExitMatch
                 total += w * fr.value
             company_exit_data[ec][exit_type] = (total, co, features, matching_themes)
 
-    # Step 2: Exclusive assignment — each company goes to its highest-scoring exit
+    # Step 2: Exclusive assignment — each company goes to its highest-scoring exit.
+    # Uses a two-pass approach to guarantee minimum candidates per exit:
+    #   Pass 1: Assign each company to its best exit (greedy).
+    #   Pass 2: If any exit has fewer than top_n companies, steal the
+    #           highest-scoring unassigned-to-this-exit companies from
+    #           over-populated exits.
     company_assignments: dict[str, str] = {}
     for ec, exit_scores in company_exit_data.items():
         best_exit = max(exit_scores, key=lambda et: exit_scores[et][0])
         company_assignments[ec] = best_exit
+
+    # Pass 2: Ensure each exit has at least top_n candidates
+    for exit_type in exit_types:
+        assigned_count = sum(1 for v in company_assignments.values() if v == exit_type)
+        if assigned_count < top_n:
+            # Find companies not assigned to this exit, sorted by their score for this exit
+            candidates = [
+                (company_exit_data[ec][exit_type][0], ec)
+                for ec in company_exit_data
+                if company_assignments[ec] != exit_type
+            ]
+            candidates.sort(key=lambda x: x[0], reverse=True)
+            needed = top_n - assigned_count
+            for _, ec in candidates[:needed]:
+                company_assignments[ec] = exit_type
 
     # Step 3: Build per-exit candidate lists (only assigned companies)
     exits: list[ExitRanking] = []
