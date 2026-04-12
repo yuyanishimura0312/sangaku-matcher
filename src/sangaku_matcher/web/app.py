@@ -82,23 +82,41 @@ async def match(
 async def hypothesis_match(
     request: Request,
     description: str = Form(...),
-    top_n: int = Form(10),
+    top_n: int = Form(3),
 ):
-    """Theme-based hypothesis matching — uses 122 themes across 3 axes."""
-    from sangaku_matcher.theme_matcher import run_theme_match
+    """Redirect legacy /hypothesis to multi-exit /match."""
+    from sangaku_matcher.seeds import parse_seed
+    from sangaku_matcher.matcher import run_multi_exit_match
 
-    top_n = max(1, min(top_n, 30))
+    top_n = max(1, min(top_n, 50))
     try:
-        result = run_theme_match(description, top_n=top_n)
-    except Exception as e:
+        seed = parse_seed(
+            description=description,
+            title=description[:60],
+        )
+        result = run_multi_exit_match(seed, top_n=top_n)
+    except ValueError as e:
         return templates.TemplateResponse(request, "home.html", {
             "company_count": _company_count(),
-            "error": f"仮説構築中にエラーが発生しました: {e}",
+            "error": str(e),
+        })
+    except Exception:
+        return templates.TemplateResponse(request, "home.html", {
+            "company_count": _company_count(),
+            "error": "マッチング処理中にエラーが発生しました。",
         })
 
-    return templates.TemplateResponse(request, "hypothesis_result.html", {
+    return templates.TemplateResponse(request, "multi_exit_result.html", {
         "result": result,
+        "seed": seed,
     })
+
+
+@app.get("/hypothesis", response_class=HTMLResponse)
+async def hypothesis_get(request: Request):
+    """Redirect GET /hypothesis to home page."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/", status_code=302)
 
 
 def _load_match_result(seed_id: str):
