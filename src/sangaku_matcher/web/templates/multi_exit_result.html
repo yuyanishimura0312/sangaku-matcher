@@ -1,145 +1,121 @@
 {% extends "base.html" %}
-{% block title %}多出口マッチング結果 -- {{ seed.title }}{% endblock %}
+{% block title %}連携候補分析 -- {{ seed.title }}{% endblock %}
 {% block content %}
-<h2>多出口マッチング結果</h2>
 
-{# ── Seed info card ── #}
-<div class="card mb-4">
-    <div class="card-header">{{ seed.title }}</div>
-    <div class="card-body">
-        <div class="d-flex gap-4 flex-wrap mb-3">
-            <div>
-                <span class="stat-label">実行日時</span><br>
-                <span style="font-size:0.9rem">{{ result.executed_at }}</span>
-            </div>
-            <div>
-                <span class="stat-label">処理時間</span><br>
-                <span style="font-size:0.9rem">{{ result.duration_sec }}秒</span>
-            </div>
-            <div>
-                <span class="stat-label">対象企業</span><br>
-                <span style="font-size:0.9rem">{{ result.company_count }}社</span>
-            </div>
-            <div>
-                <span class="stat-label">出口数</span><br>
-                <span style="font-size:0.9rem">{{ result.exits|length }}種類</span>
+{# ── Seed & Profile ── #}
+<div style="max-width:800px;margin:0 auto 2rem">
+    <h2 style="margin-bottom:0.5rem">連携候補分析</h2>
+
+    <div class="card mb-4">
+        <div class="card-body" style="background:var(--color-muted-bg)">
+            <p style="font-size:0.85rem;font-weight:500;margin-bottom:0.25rem;color:var(--color-text-muted)">入力された研究テーマ</p>
+            <p style="font-size:0.92rem;margin-bottom:0.75rem;line-height:1.8">{{ seed.description[:300] }}{% if seed.description|length > 300 %}...{% endif %}</p>
+            <div class="d-flex gap-3 flex-wrap" style="font-size:0.78rem;color:var(--color-text-subtle)">
+                <span>{{ result.company_count }}社を分析</span>
+                <span>{{ result.duration_sec }}秒</span>
+                <span>{{ result.executed_at }}</span>
             </div>
         </div>
     </div>
-</div>
 
-{# ── Researcher profile card (Stokes 1997 / D'Este & Perkmann 2011) ── #}
-{% if result.researcher_profile %}
-<div class="card mb-4" style="border-left: 4px solid var(--color-accent, #7c3aed)">
-    <div class="card-body">
-        <h5 style="font-size:0.92rem;font-weight:600;margin-bottom:0.5rem">
-            研究者プロファイル分析
-        </h5>
-        <p style="font-size:0.88rem;margin-bottom:0.5rem">
-            <strong>タイプ:</strong> {{ result.researcher_profile.type_label }}
-        </p>
-        <p style="font-size:0.85rem;color:var(--color-text-muted);margin-bottom:0.75rem">
-            {{ result.researcher_profile.recommendation_text }}
-        </p>
-        <div class="d-flex gap-3" style="font-size:0.8rem">
-            <span>技術親和: {{ "%.0f"|format(result.researcher_profile.tech_affinity * 100) }}%</span>
-            <span>人文親和: {{ "%.0f"|format(result.researcher_profile.humanities_affinity * 100) }}%</span>
-            <span>野心親和: {{ "%.0f"|format(result.researcher_profile.ambition_affinity * 100) }}%</span>
+    {% if result.researcher_profile %}
+    {% set rp = result.researcher_profile %}
+    <div class="card mb-4" style="border-left:4px solid var(--color-accent)">
+        <div class="card-body" style="padding:1rem 1.25rem">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <p style="font-size:0.82rem;color:var(--color-text-muted);margin-bottom:0.25rem">研究者タイプ</p>
+                    <p style="font-size:1rem;font-weight:700;margin-bottom:0.5rem">{{ rp.type_label }}</p>
+                    <p style="font-size:0.85rem;color:var(--color-text-muted);margin:0;line-height:1.7">{{ rp.recommendation_text }}</p>
+                </div>
+                <div class="d-flex gap-3" style="font-size:0.75rem;color:var(--color-text-subtle);white-space:nowrap;padding-top:0.25rem">
+                    <div style="text-align:center"><div style="font-weight:600;font-size:0.9rem;color:var(--color-text)">{{ "%.0f"|format(rp.tech_affinity * 100) }}%</div>技術</div>
+                    <div style="text-align:center"><div style="font-weight:600;font-size:0.9rem;color:var(--color-text)">{{ "%.0f"|format(rp.humanities_affinity * 100) }}%</div>人文</div>
+                    <div style="text-align:center"><div style="font-weight:600;font-size:0.9rem;color:var(--color-text)">{{ "%.0f"|format(rp.ambition_affinity * 100) }}%</div>野心</div>
+                </div>
+            </div>
         </div>
     </div>
+    {% endif %}
 </div>
-{% endif %}
 
 {# ── Exit color map ── #}
 {% set exit_colors = {"rd": "#2563eb", "new_domain": "#7c3aed", "exploratory": "#059669"} %}
+{% set exit_icons = {"rd": "1", "new_domain": "2", "exploratory": "3"} %}
 
-{# ── Score dimensions to display per exit type ── #}
-{% set exit_display_dims = {
-    "rd": [
-        ("need_fit", "ニーズ適合"),
-        ("tech_prox", "技術近接性"),
-        ("abs_cap", "知識吸収能力"),
-        ("past_ties", "関係資本")
-    ],
-    "new_domain": [
-        ("ambition_fit", "野心領域適合"),
-        ("humanities_fit", "人文社会科学"),
-        ("open_inno", "エコシステム"),
-        ("future_option", "将来価値")
-    ],
-    "exploratory": [
-        ("theme_breadth", "テーマ広がり"),
-        ("humanities_fit", "人文社会科学"),
-        ("ambition_fit", "野心領域適合"),
-        ("open_inno", "エコシステム")
-    ]
-} %}
-
-{# ── Exit sections ── #}
+{# ── Exit sections (collapsible) ── #}
+<div style="max-width:800px;margin:0 auto">
 {% for exit in result.exits %}
 {% set color = exit_colors.get(exit.exit_type, "#6b7280") %}
-<div class="mb-5">
-    {# Exit header #}
-    <div class="mb-3" style="border-left:4px solid {{ color }};padding-left:1rem">
-        <h3 style="color:{{ color }};margin-bottom:0.25rem">{{ exit.exit_label }}
-            {% if result.researcher_profile and exit.exit_type == result.researcher_profile.recommended_exit %}
-            <span style="display:inline-block;font-size:0.65rem;font-weight:600;padding:2px 8px;border-radius:4px;background:#059669;color:#fff;vertical-align:middle;margin-left:0.5rem">おすすめ</span>
+{% set is_recommended = result.researcher_profile and exit.exit_type == result.researcher_profile.recommended_exit %}
+{% set section_id = "exit-" ~ exit.exit_type %}
+
+<div class="card mb-4" style="border-left:4px solid {{ color }}">
+    {# Collapsible header #}
+    <div class="card-header" style="cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;background:{{ color }}08"
+         onclick="document.getElementById('{{ section_id }}').classList.toggle('collapsed');this.querySelector('.chevron').classList.toggle('rotated')"
+         role="button" aria-expanded="{{ 'true' if is_recommended else 'false' }}" aria-controls="{{ section_id }}">
+        <div style="display:flex;align-items:center;gap:0.5rem">
+            <span style="color:{{ color }};font-size:1.05rem;font-weight:700">{{ exit.exit_label }}</span>
+            {% if is_recommended %}
+            <span style="font-size:0.65rem;font-weight:600;padding:2px 8px;border-radius:4px;background:{{ color }};color:#fff">おすすめ</span>
             {% endif %}
-        </h3>
-        <p style="font-size:0.85rem;color:var(--color-text-muted);margin:0">{{ exit.exit_description }}</p>
+            <span style="font-size:0.78rem;color:var(--color-text-subtle)">{{ exit.rankings|length }}社</span>
+        </div>
+        <span class="chevron {{ '' if is_recommended else 'rotated' }}" style="font-size:0.8rem;color:var(--color-text-subtle);transition:transform 200ms">&#9660;</span>
     </div>
 
-    {# Company cards for this exit #}
-    {% for rc in exit.rankings %}
-    <div class="card mb-3" style="border-left:3px solid {{ color }}">
-        <div class="card-header d-flex justify-content-between align-items-center" style="background:{{ color }}08">
-            <span>
-                <span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:{{ color }};color:#fff;font-size:0.75rem;font-weight:700;margin-right:0.5rem">{{ rc.rank }}</span>
-                <strong>{{ rc.company_name }}</strong>
-                <span class="badge ms-2" style="background:var(--color-muted-bg);color:var(--color-text-muted);font-size:0.7rem">{{ rc.industry }}</span>
-            </span>
-            <span style="font-size:0.9rem;font-weight:700;color:{{ color }}">{{ "%.3f"|format(rc.total_score) }}</span>
+    {# Collapsible body #}
+    <div id="{{ section_id }}" class="{{ '' if is_recommended else 'collapsed' }}">
+        <div style="padding:0.75rem 1.25rem 0.5rem">
+            <p style="font-size:0.82rem;color:var(--color-text-muted);margin:0;line-height:1.7">{{ exit.exit_description }}</p>
         </div>
-        <div class="card-body">
-            {# Hypothesis text #}
+
+        {# Company cards #}
+        {% for rc in exit.rankings %}
+        <div style="border-top:1px solid var(--color-border);padding:1.25rem">
+            {# Company header #}
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem">
+                <div style="display:flex;align-items:center;gap:0.5rem">
+                    <span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:{{ color }};color:#fff;font-size:0.78rem;font-weight:700">{{ rc.rank }}</span>
+                    <a href="/company/{{ rc.edinet_code }}" style="font-size:1rem;font-weight:700;color:var(--color-text)">{{ rc.company_name }}</a>
+                    <span style="font-size:0.72rem;color:var(--color-text-subtle);background:var(--color-muted-bg);padding:2px 6px;border-radius:3px">{{ rc.industry }}</span>
+                </div>
+            </div>
+
+            {# Hypothesis text — the core value #}
             {% if rc.overall_comment %}
-            <div class="mb-3" style="background:{{ color }}08;padding:0.85rem 1rem;border-radius:8px;font-size:0.85rem;line-height:1.8;color:var(--color-text)">
+            <div style="background:var(--color-muted-bg);padding:1rem 1.15rem;border-radius:8px;font-size:0.88rem;line-height:1.9;color:var(--color-text);margin-bottom:0.75rem">
                 {{ rc.overall_comment }}
             </div>
             {% endif %}
 
-            {# Key scores bar display #}
-            {% set dims = exit_display_dims.get(exit.exit_type, []) %}
-            <div class="row">
-                {% for dim_key, dim_label in dims %}
+            {# Compact score indicators #}
+            {% set exit_dims = {
+                "rd": [("need_fit", "ニーズ"), ("tech_prox", "技術"), ("abs_cap", "吸収力")],
+                "new_domain": [("ambition_fit", "野心"), ("humanities_fit", "人文"), ("open_inno", "OI")],
+                "exploratory": [("theme_breadth", "テーマ幅"), ("humanities_fit", "人文"), ("ambition_fit", "野心")]
+            } %}
+            <div style="display:flex;gap:1.5rem;font-size:0.75rem;color:var(--color-text-subtle)">
+                {% for dim_key, dim_label in exit_dims.get(exit.exit_type, []) %}
                 {% set fr = rc.feature_scores.get(dim_key) %}
                 {% if fr %}
-                <div class="col-md-3 col-6 mb-2">
-                    <div style="font-size:0.75rem;color:var(--color-text-muted);margin-bottom:2px">{{ dim_label }}</div>
-                    <div class="d-flex align-items-center gap-2">
-                        <div class="score-bar" style="flex:1;height:6px"
-                             role="progressbar"
-                             aria-valuenow="{{ (fr.value * 100)|int }}"
-                             aria-valuemin="0"
-                             aria-valuemax="100"
-                             aria-label="{{ dim_label }}">
-                            <div class="score-bar-fill" style="width:{{ (fr.value * 100)|int }}%;background:{{ color }}"></div>
-                        </div>
-                        <span style="font-size:0.8rem;font-weight:600;min-width:2.5em;text-align:right">{{ "%.2f"|format(fr.value) }}</span>
-                    </div>
-                </div>
+                <span>{{ dim_label }} <strong style="color:{{ color }}">{{ "%.0f"|format(fr.value * 100) }}%</strong></span>
                 {% endif %}
                 {% endfor %}
             </div>
-
-            <div class="mt-2">
-                <a href="/company/{{ rc.edinet_code }}" class="btn btn-outline-secondary btn-sm">企業詳細</a>
-            </div>
         </div>
+        {% endfor %}
     </div>
-    {% endfor %}
 </div>
 {% endfor %}
 
-<a href="/" class="btn btn-primary mt-3 mb-4">新しいシーズを入力</a>
+<a href="/" class="btn btn-primary mt-2 mb-4" style="width:100%">新しいテーマで分析</a>
+</div>
+
+<style>
+.collapsed { display: none; }
+.chevron { display: inline-block; }
+.chevron.rotated { transform: rotate(-90deg); }
+</style>
 {% endblock %}

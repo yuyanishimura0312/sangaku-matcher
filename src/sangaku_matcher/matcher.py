@@ -563,53 +563,48 @@ def _generate_exit_hypothesis(
     hf = features.get("humanities_fit", FeatureResult(0, ""))
     oi = features.get("open_inno", FeatureResult(0, ""))
     af = features.get("ambition_fit", FeatureResult(0, ""))
+    tb = features.get("theme_breadth", FeatureResult(0, ""))
 
     if exit_type == "rd":
-        # Focus on need_fit, tech_prox, abs_cap
-        parts = [
-            f"{company_name}は技術ニーズとの一致度が高く(need_fit={nf.value:.2f})、"
-            f"シーズが直接対応可能。"
-        ]
-        if tp.value > 0.3:
-            parts.append(f"技術近接性(tech_prox={tp.value:.2f})も適度な距離にあり、知識移転が期待できる。")
-        if ac.value > 0.3:
-            parts.append(f"知識吸収能力(abs_cap={ac.value:.2f})が高く、共同研究契約に至りやすい候補。")
+        # R&D joint research: why this company needs the researcher's expertise
+        parts = [f"{company_name}は、当該研究シーズに関連する技術課題を抱えており、共同研究の対象となりうる企業です。"]
+        if nf.rationale:
+            parts.append(nf.rationale)
         if pt.value > 0.2:
-            parts.append(f"過去の産学連携実績(past_ties={pt.value:.2f})もあり。")
+            parts.append("大学との連携実績があり、産学連携の受け入れ体制が整っています。")
+        if ac.value > 0.5:
+            parts.append("R&D投資が活発で、外部知識を取り込む組織能力が高い企業です。")
         return " ".join(parts)
 
     elif exit_type == "new_domain":
-        # Focus on ambition_fit, humanities_fit, open_inno
-        parts = []
-        if af.value > 0.2:
-            af_rationale = af.rationale if af.rationale else ""
-            parts.append(
-                f"{company_name}は新領域への挑戦意欲が高い(ambition_fit={af.value:.2f})。"
-                f"{af_rationale}"
-            )
-        else:
-            parts.append(f"{company_name}の新領域適合度(ambition_fit={af.value:.2f})。")
-        if hf.value > 0.2:
-            parts.append(f"人文社会科学的知見との親和性(humanities_fit={hf.value:.2f})。")
-        if oi.value > 0.3:
-            parts.append(f"OI体制も整備(open_inno={oi.value:.2f})され、新領域探索の受け入れ態勢あり。")
+        # New domain exploration: what ambition the company has + how researcher can contribute
+        parts = [f"{company_name}は、新しい事業領域への挑戦を有価証券報告書で明示しています。"]
+        if af.rationale:
+            parts.append(af.rationale)
+        if hf.value > 0.4:
+            parts.append("人文社会科学的な知見がこの新領域への参入を後押しする可能性があります。")
+        if oi.value > 0.4:
+            parts.append("オープンイノベーション体制が整備されており、外部との新領域探索に積極的です。")
         return " ".join(parts)
 
     else:  # exploratory
-        # Use pre-cached matching themes — no re-scoring needed
+        # Exploratory dialogue: what conversation topics exist
         n_themes = len(cached_matching_themes)
         if n_themes > 0:
-            theme_names = [m["label"] for m in cached_matching_themes[:5]]
+            # Group by axis for readable display
+            by_axis = {}
+            for m in cached_matching_themes[:8]:
+                axis_label = {"humanities": "社会", "tech": "技術", "ambition": "野心"}.get(m.get("axis", ""), "")
+                by_axis.setdefault(axis_label, []).append(m["label"])
+            topic_parts = []
+            for axis_label, names in by_axis.items():
+                topic_parts.append(f"{axis_label}分野では{', '.join(names[:3])}")
             parts = [
-                f"{company_name}とは{n_themes}個のテーマで接点: {', '.join(theme_names)}。"
+                f"{company_name}とは{n_themes}個のテーマで対話の接点があります。"
+                f"{'。'.join(topic_parts)}などについて、探索的な対話から連携の可能性を探ることができます。"
             ]
         else:
-            parts = [f"{company_name}との直接的なテーマ接点は限定的。"]
-        if hf.value > 0.2:
-            parts.append(f"人文系親和性(humanities_fit={hf.value:.2f})。")
-        if af.value > 0.2:
-            parts.append(f"野心領域親和性(ambition_fit={af.value:.2f})。")
-        parts.append("まず対話を通じて連携の接点を探索することを推奨。")
+            parts = [f"{company_name}とは、異なる視点からの対話により新たな接点が見つかる可能性があります。"]
         return " ".join(parts)
 
 
