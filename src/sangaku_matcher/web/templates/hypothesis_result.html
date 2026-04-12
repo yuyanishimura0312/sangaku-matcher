@@ -86,4 +86,52 @@
 {% endfor %}
 
 <a href="/" class="btn btn-outline-secondary mt-3">新しいテーマで検索</a>
+
+{# Methodology #}
+<div class="card mt-4 mb-4">
+    <div class="card-header" style="font-weight:600">算出方法</div>
+    <div class="card-body" style="font-size:0.85rem;line-height:1.8">
+
+        <h5 style="font-size:0.9rem;font-weight:600;margin-bottom:0.75rem">1. データ基盤</h5>
+        <p>約3,800社の有価証券報告書（有報）の「経営方針、経営環境及び対処すべき課題等」セクションから、Claude APIを用いて3種類のナラティブを個社別に抽出しています。</p>
+        <table class="table table-sm" style="font-size:0.82rem">
+            <thead><tr><th>軸</th><th>抽出内容</th><th>ナラティブ数</th><th>テーマ数</th></tr></thead>
+            <tbody>
+                <tr><td style="color:#1565C0;font-weight:600">技術</td><td>企業が求めている技術領域（コアR&D、DX、素材、環境、製品革新等）</td><td>22,113件</td><td>49</td></tr>
+                <tr><td style="color:#8B6914;font-weight:600">社会</td><td>人文社会科学的知見で貢献できる連携領域（組織文化、倫理、地域社会等）</td><td>19,495件</td><td>33</td></tr>
+                <tr><td style="color:#C62828;font-weight:600">野心</td><td>企業が挑戦しようとしている新規事業・野心的領域</td><td>16,676件</td><td>40</td></tr>
+            </tbody>
+        </table>
+
+        <h5 style="font-size:0.9rem;font-weight:600;margin-top:1.5rem;margin-bottom:0.75rem">2. テーマ体系の構築（GTA的アプローチ）</h5>
+        <p>抽出された計58,284件のナラティブを、Grounded Theory Analysis（GTA）に着想を得たボトムアップ分析で構造化しています。トップダウンの固定カテゴリではなく、データから浮かび上がるテーマをクラスタリングとLLM分析で体系化し、3軸合計122の小テーマを定義しました。各テーマには代表ベクトル（384次元、multilingual-e5-small）が割り当てられています。<a href="/themes" style="color:var(--color-accent)">テーマ体系の全容はこちら</a></p>
+
+        <h5 style="font-size:0.9rem;font-weight:600;margin-top:1.5rem;margin-bottom:0.75rem">3. 企業×テーマ近接度行列</h5>
+        <p>各企業の各ナラティブと122テーマの代表ベクトルのコサイン類似度を算出し、テーマごとの最大類似度を「企業のそのテーマへの近接度」として記録しています。全企業×全テーマの近接度行列（約46万行）が事前計算されています。</p>
+
+        <h5 style="font-size:0.9rem;font-weight:600;margin-top:1.5rem;margin-bottom:0.75rem">4. マッチングスコアの算出</h5>
+        <p>研究者が入力したテキストのベクトルと122テーマの代表ベクトルのコサイン類似度を算出し、「研究者のテーマ親和度」を得ます。各企業のスコアは以下の式で計算されます:</p>
+        <div style="background:var(--color-muted-bg);padding:0.75rem 1rem;border-radius:6px;font-family:monospace;font-size:0.82rem;margin:0.75rem 0">
+            企業スコア = &Sigma;<sub>122テーマ</sub> (研究者のテーマ親和度 &times; 企業のテーマ強度)
+        </div>
+        <p>ここで「企業のテーマ強度」は、全企業の近接度分布に対するz-score正規化（sigmoid変換）により、「平均的な企業よりこのテーマで顕著にニーズが高いか」を0-1で表します。これにより、全企業で一律に高いテーマではなく、その企業に特徴的なテーマが重視されます。</p>
+
+        <h5 style="font-size:0.9rem;font-weight:600;margin-top:1.5rem;margin-bottom:0.75rem">5. 仮説の構築</h5>
+        <p>上位企業について、研究者の親和度が高く（83%以上）かつ企業の強度も高い（55%以上）テーマを抽出し、3軸のどの組み合わせで接点があるかを分析して仮説文を生成します。技術・社会・野心の複数軸で接点がある場合、超学際的連携の可能性として評価されます。</p>
+
+        <h5 style="font-size:0.9rem;font-weight:600;margin-top:1.5rem;margin-bottom:0.75rem">6. 表示される数値の読み方</h5>
+        <table class="table table-sm" style="font-size:0.82rem">
+            <thead><tr><th>数値</th><th>意味</th></tr></thead>
+            <tbody>
+                <tr><td><strong>研究者 XX%</strong></td><td>研究者の入力テキストとそのテーマの代表ベクトルのコサイン類似度。研究テーマがそのテーマにどれほど関連するかを示す</td></tr>
+                <tr><td><strong>企業 XX%</strong></td><td>その企業のそのテーマへの近接度のz-score正規化値。全企業平均と比較して、その企業がそのテーマでどれほど顕著にニーズが高いかを示す（50%=平均、80%以上=顕著に高い）</td></tr>
+                <tr><td><strong>Score XX.X</strong></td><td>122テーマ全体の重み付き合計スコア。絶対値より順位が重要</td></tr>
+            </tbody>
+        </table>
+
+        <h5 style="font-size:0.9rem;font-weight:600;margin-top:1.5rem;margin-bottom:0.75rem">7. 留意事項</h5>
+        <p>本システムの出力はAIによる仮説であり、最終的な連携判断は専門家の評価を経て行ってください。有価証券報告書は企業の公式開示情報ですが、記述の網羅性や具体性は企業によって異なります。ベクトル化にはmultilingual-e5-small（384次元）を使用しており、日本語テキストの意味的類似度を高精度に捉えますが、専門用語の微妙なニュアンスの差異は反映されない場合があります。</p>
+    </div>
+</div>
+
 {% endblock %}
