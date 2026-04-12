@@ -15,6 +15,16 @@ import numpy as np
 
 from sangaku_matcher.scoring import FeatureResult
 
+# Whitelist of table names permitted in dynamic SQL — prevents SQL injection
+ALLOWED_TABLES = {
+    "taxonomy_themes",
+    "company_taxonomy_proximity",
+    "tech_taxonomy_themes",
+    "tech_taxonomy_proximity",
+    "ambition_taxonomy_themes",
+    "ambition_taxonomy_proximity",
+}
+
 
 class ThemeBreadthScorer:
     """Score companies based on breadth of thematic overlap across 3 axes."""
@@ -46,6 +56,11 @@ class ThemeBreadthScorer:
         theme_vals = defaultdict(list)
 
         for axis_name, themes_table, prox_table in axis_configs:
+            # Guard against SQL injection: both table names must be in the whitelist
+            if themes_table not in ALLOWED_TABLES or prox_table not in ALLOWED_TABLES:
+                raise ValueError(
+                    f"Table name not in allowlist: {themes_table!r}, {prox_table!r}"
+                )
             if themes_table not in tables or prox_table not in tables:
                 continue
 
@@ -96,8 +111,12 @@ class ThemeBreadthScorer:
         """Compute seed similarity to all theme centroids across 3 axes."""
         if not self._all_themes:
             return
+        norm = np.linalg.norm(seed_vector)
+        if norm == 0.0:
+            # Zero vector has no direction; skip precomputation to avoid division by zero
+            return
         centroids = np.array([t["centroid"] for t in self._all_themes])
-        sv_norm = seed_vector / np.linalg.norm(seed_vector)
+        sv_norm = seed_vector / norm
         self._seed_sims = centroids @ sv_norm
 
     def score(self, seed_vector: np.ndarray, company: dict) -> FeatureResult:

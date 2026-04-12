@@ -524,9 +524,20 @@ def _generate_exit_hypothesis(
     exit_type: str,
     company_name: str,
     features: dict[str, FeatureResult],
-    theme_breadth_scorer: ThemeBreadthScorer,
+    cached_matching_themes: list[dict],
 ) -> str:
-    """Generate an exit-specific hypothesis text for a company."""
+    """Generate an exit-specific hypothesis text for a company.
+
+    Args:
+        exit_type: One of "rd", "new_domain", "exploratory".
+        company_name: Display name of the target company.
+        features: Scorer results keyed by scorer name.
+        cached_matching_themes: Matching theme list captured during the initial
+            score() call — avoids a redundant second score() invocation.
+
+    Returns:
+        Human-readable hypothesis string in Japanese.
+    """
     nf = features.get("need_fit", FeatureResult(0, ""))
     tp = features.get("tech_prox", FeatureResult(0, ""))
     ac = features.get("abs_cap", FeatureResult(0, ""))
@@ -534,7 +545,6 @@ def _generate_exit_hypothesis(
     hf = features.get("humanities_fit", FeatureResult(0, ""))
     oi = features.get("open_inno", FeatureResult(0, ""))
     af = features.get("ambition_fit", FeatureResult(0, ""))
-    tb = features.get("theme_breadth", FeatureResult(0, ""))
 
     if exit_type == "rd":
         # Focus on need_fit, tech_prox, abs_cap
@@ -568,11 +578,10 @@ def _generate_exit_hypothesis(
         return " ".join(parts)
 
     else:  # exploratory
-        # Focus on theme_breadth with matching theme details
-        matching = theme_breadth_scorer.matching_themes
-        n_themes = len(matching)
+        # Use pre-cached matching themes — no re-scoring needed
+        n_themes = len(cached_matching_themes)
         if n_themes > 0:
-            theme_names = [m["label"] for m in matching[:5]]
+            theme_names = [m["label"] for m in cached_matching_themes[:5]]
             parts = [
                 f"{company_name}とは{n_themes}個のテーマで接点: {', '.join(theme_names)}。"
             ]
@@ -587,7 +596,23 @@ def _generate_exit_hypothesis(
 
 
 def run_multi_exit_match(seed: Seed, top_n: int | None = None) -> MultiExitMatchResult:
-    """Score all companies using 9 dimensions, then rank by 3 exit types."""
+    """Score all companies using 9 dimensions, then rank by 3 exit types.
+
+    Runs a single pass over all companies scoring each on 9 dimensions
+    (tech_prox, need_fit, abs_cap, past_ties, future_option, open_inno,
+    humanities_fit, ambition_fit, theme_breadth) plus a synergy bonus.
+    Results are then ranked separately for each of 3 exit types
+    (rd, new_domain, exploratory) using exit-specific dimension weights.
+
+    Args:
+        seed: Researcher seed containing a semantic vector and metadata.
+        top_n: Number of companies to include per exit type. Defaults to
+            settings.default_top_n when None.
+
+    Returns:
+        MultiExitMatchResult with rankings grouped by exit type, timing
+        metadata, and the total number of companies evaluated.
+    """
     top_n = top_n or settings.default_top_n
     start = time.time()
 
@@ -640,14 +665,19 @@ def run_multi_exit_match(seed: Seed, top_n: int | None = None) -> MultiExitMatch
         ambition_fit, theme_breadth,
     ]
 
-    # Score all companies once across all 9 dimensions + synergy
-    scored_companies: list[tuple[dict, dict[str, FeatureResult]]] = []
+    # Score all companies once across all 9 dimensions + synergy.
+    # Also cache matching_themes from theme_breadth to avoid re-scoring later.
+    scored_companies: list[tuple[dict, dict[str, FeatureResult], list[dict]]] = []
 
     for co in companies:
         features: dict[str, FeatureResult] = {}
         for scorer in scorers:
             result = scorer.score(seed.semantic_vector, co)
             features[scorer.name] = result
+
+        # Cache matching_themes immediately after theme_breadth.score() runs,
+        # so hypothesis generation can use them without a second score() call.
+        cached_matching_themes = list(theme_breadth.matching_themes)
 
         # Cross-dimensional synergy bonus (same as run_match)
         nf_val = features.get("need_fit", FeatureResult(0, "")).value
@@ -666,7 +696,7 @@ def run_multi_exit_match(seed: Seed, top_n: int | None = None) -> MultiExitMatch
             ),
         )
 
-        scored_companies.append((co, features))
+        scored_companies.append((co, features, cached_matching_themes))
 
     # Build rankings for each exit type
     exits: list[ExitRanking] = []
@@ -675,26 +705,24 @@ def run_multi_exit_match(seed: Seed, top_n: int | None = None) -> MultiExitMatch
         weights = EXIT_WEIGHTS[exit_type]
 
         # Compute weighted total for each company
-        exit_scored: list[tuple[float, dict, dict[str, FeatureResult]]] = []
-        for co, features in scored_companies:
+        exit_scored: list[tuple[float, dict, dict[str, FeatureResult], list[dict]]] = []
+        for co, features, matching_themes in scored_companies:
             total = 0.0
             for dim_name, w in weights.items():
                 if w <= 0:
                     continue
                 fr = features.get(dim_name, FeatureResult(0, ""))
                 total += w * fr.value
-            exit_scored.append((total, co, features))
+            exit_scored.append((total, co, features, matching_themes))
 
         exit_scored.sort(key=lambda x: x[0], reverse=True)
         top = exit_scored[:top_n]
 
         rankings = []
-        for rank_idx, (total, co, features) in enumerate(top, 1):
-            # Re-score theme_breadth for this specific company to populate matching_themes
-            theme_breadth.score(seed.semantic_vector, co)
-
+        for rank_idx, (total, co, features, matching_themes) in enumerate(top, 1):
+            # Use cached matching_themes from scoring phase — no second score() call needed
             hypothesis = _generate_exit_hypothesis(
-                exit_type, co["name"], features, theme_breadth,
+                exit_type, co["name"], features, matching_themes,
             )
 
             rankings.append(RankedCompany(

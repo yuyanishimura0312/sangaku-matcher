@@ -82,8 +82,12 @@ class AmbitionFitScorer:
         """Compute seed similarity to each ambition theme centroid."""
         if not self._themes:
             return
+        norm = np.linalg.norm(seed_vector)
+        if norm == 0.0:
+            # Zero vector has no direction; skip precomputation to avoid division by zero
+            return
         centroids = np.array([t["centroid"] for t in self._themes])
-        sv_norm = seed_vector / np.linalg.norm(seed_vector)
+        sv_norm = seed_vector / norm
         self._seed_theme_sims = centroids @ sv_norm
 
     def score(self, seed_vector: np.ndarray, company: dict) -> FeatureResult:

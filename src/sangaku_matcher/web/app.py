@@ -568,7 +568,11 @@ async def api_match(payload: dict):
         )
 
     # Clamp top_n to a safe range (same rule as HTML endpoint)
-    top_n = int(payload.get("top_n", 10))
+    # Guard against non-numeric values by falling back to default 10
+    try:
+        top_n = int(payload.get("top_n", 10))
+    except (TypeError, ValueError):
+        top_n = 10
     top_n = max(1, min(top_n, 50))
 
     try:
