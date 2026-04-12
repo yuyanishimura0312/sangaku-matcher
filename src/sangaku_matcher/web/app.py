@@ -45,7 +45,7 @@ async def match(
     title: str = Form(""),
     doi: str = Form(""),
     patent_no: str = Form(""),
-    top_n: int = Form(10),
+    top_n: int = Form(3),
 ):
     from sangaku_matcher.seeds import parse_seed
     from sangaku_matcher.matcher import run_multi_exit_match
@@ -737,9 +737,9 @@ async def api_match(payload: dict):
     # Clamp top_n to a safe range (same rule as HTML endpoint)
     # Guard against non-numeric values by falling back to default 10
     try:
-        top_n = int(payload.get("top_n", 10))
+        top_n = int(payload.get("top_n", 3))
     except (TypeError, ValueError):
-        top_n = 10
+        top_n = 3
     top_n = max(1, min(top_n, 50))
 
     try:
