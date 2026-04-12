@@ -24,7 +24,7 @@ import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.request import Request, urlopen
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ def _api_get(path: str, params: dict, api_key: str) -> dict | bytes:
     url = f"{EDINET_BASE}/{path}?{query}&Subscription-Key={api_key}"
     req = Request(url, headers={"User-Agent": "sangaku-matcher/1.0"})
     try:
-        with urlopen(req, timeout=60) as resp:
+        with urlopen(req, timeout=120) as resp:
             content_type = resp.headers.get("Content-Type", "")
             data = resp.read()
             if "json" in content_type:
@@ -69,10 +69,14 @@ def _api_get(path: str, params: dict, api_key: str) -> dict | bytes:
             return data
     except HTTPError as e:
         if e.code == 429:
-            logger.warning("Rate limited, waiting 10s...")
-            time.sleep(10)
+            logger.warning("Rate limited, waiting 30s...")
+            time.sleep(30)
             return _api_get(path, params, api_key)
         raise
+    except (URLError, TimeoutError, OSError) as e:
+        logger.warning("Network error: %s. Retrying in 10s...", e)
+        time.sleep(10)
+        return _api_get(path, params, api_key)
 
 
 def _strip_html(text: str) -> str:
