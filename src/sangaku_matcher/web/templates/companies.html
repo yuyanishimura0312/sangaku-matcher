@@ -39,9 +39,9 @@
                 <a href="{{ base }}&sort={{ field }}&order={{ next_order }}&page=1" class="d-flex align-items-center gap-1{{ ' text-end justify-content-end' if field in ('revenue', 'rd_expense', 'rd_intensity') else '' }}">
                     {{ label }}
                     {% if sort == field %}
-                        <span class="sort-arrow">{{ "&#9650;" if order == "asc" else "&#9660;" }}</span>
+                        <span class="sort-arrow">{% if order == "asc" %}▲{% else %}▼{% endif %}</span>
                     {% else %}
-                        <span class="sort-arrow text-muted opacity-25">&#9650;&#9660;</span>
+                        <span class="sort-arrow text-muted opacity-25">▲▼</span>
                     {% endif %}
                 </a>
             </th>
