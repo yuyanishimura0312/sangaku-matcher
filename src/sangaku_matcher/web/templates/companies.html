@@ -32,12 +32,26 @@
 <table class="table table-striped table-hover" aria-label="企業データベース一覧">
     <thead>
         <tr>
-            <th scope="col">企業名</th>
+            {% set base = "?q=" ~ q ~ "&industry=" ~ industry %}
+            {% macro sort_header(field, label) %}
+            {% set next_order = "asc" if (sort == field and order == "desc") else "desc" %}
+            <th scope="col">
+                <a href="{{ base }}&sort={{ field }}&order={{ next_order }}&page=1" class="d-flex align-items-center gap-1{{ ' text-end justify-content-end' if field in ('revenue', 'rd_expense', 'rd_intensity') else '' }}">
+                    {{ label }}
+                    {% if sort == field %}
+                        <span class="sort-arrow">{{ "&#9650;" if order == "asc" else "&#9660;" }}</span>
+                    {% else %}
+                        <span class="sort-arrow text-muted opacity-25">&#9650;&#9660;</span>
+                    {% endif %}
+                </a>
+            </th>
+            {% endmacro %}
+            {{ sort_header("name", "企業名") }}
             <th scope="col">EDINET</th>
-            <th scope="col">業種</th>
-            <th scope="col">売上高 (百万円)</th>
-            <th scope="col">R&D費 (百万円)</th>
-            <th scope="col">R&D比率</th>
+            {{ sort_header("industry", "業種") }}
+            {{ sort_header("revenue", "売上高 (百万円)") }}
+            {{ sort_header("rd_expense", "R&D費 (百万円)") }}
+            {{ sort_header("rd_intensity", "R&D比率") }}
         </tr>
     </thead>
     <tbody>
@@ -57,9 +71,9 @@
 
 <nav aria-label="ページナビゲーション">
     <ul class="pagination">
-        {% if page > 1 %}<li class="page-item"><a class="page-link" href="?q={{ q }}&industry={{ industry }}&sort={{ sort }}&page={{ page - 1 }}">前へ</a></li>{% endif %}
+        {% if page > 1 %}<li class="page-item"><a class="page-link" href="?q={{ q }}&industry={{ industry }}&sort={{ sort }}&order={{ order }}&page={{ page - 1 }}">前へ</a></li>{% endif %}
         <li class="page-item disabled"><span class="page-link">{{ page }} / {{ total_pages }}</span></li>
-        {% if page < total_pages %}<li class="page-item"><a class="page-link" href="?q={{ q }}&industry={{ industry }}&sort={{ sort }}&page={{ page + 1 }}">次へ</a></li>{% endif %}
+        {% if page < total_pages %}<li class="page-item"><a class="page-link" href="?q={{ q }}&industry={{ industry }}&sort={{ sort }}&order={{ order }}&page={{ page + 1 }}">次へ</a></li>{% endif %}
     </ul>
 </nav>
 {% endblock %}
