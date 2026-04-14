@@ -7,7 +7,10 @@
 
     {% if error %}
     <div class="alert alert-danger" role="alert">
-        <strong>エラー:</strong> {{ error }}
+        <strong>入力エラー:</strong> {{ error }}
+        <p style="font-size:0.88rem;margin:0.5rem 0 0;color:var(--color-text-muted)">
+            研究テーマの概要を10文字以上で入力してください。専門用語を含む具体的な説明ほど精度の高いマッチングが可能です。
+        </p>
     </div>
     {% endif %}
 
@@ -37,7 +40,7 @@
     </div>
 
     <div id="info-block" style="margin-top:1.5rem;padding:1rem;background:var(--color-muted-bg);border-radius:8px">
-        <p style="font-size:0.82rem;color:var(--color-text-muted);margin:0;line-height:1.7">
+        <p style="font-size:0.88rem;color:var(--color-text-muted);margin:0;line-height:1.7">
             <strong>3軸122テーマによるマッチング:</strong>
             有価証券報告書のテキストをGTAに着想を得たボトムアップ分析で構造化した3つのテーマ体系を使い、研究テーマとの多角的な連携仮説を構築します。
             技術的接点だけでなく、企業の新規事業野心や社会的課題への関心も含めた「なぜ連携すべきか」の仮説を提示します。

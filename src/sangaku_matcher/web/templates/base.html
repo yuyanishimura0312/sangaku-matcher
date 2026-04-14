@@ -18,6 +18,10 @@
                     <div class="brand-tag">Miratuku Lab</div>
                 </div>
             </a>
+            <button class="nav-toggle" aria-label="メニューを開閉" aria-expanded="false"
+                    onclick="this.setAttribute('aria-expanded',this.getAttribute('aria-expanded')==='false'?'true':'false');this.nextElementSibling.classList.toggle('nav-open')">
+                <span></span><span></span><span></span>
+            </button>
             <ul class="nav-links" role="list">
                 <li><a href="/" {% if request.url.path == "/" %}class="active" aria-current="page"{% endif %}>AI解析</a></li>
                 <li><a href="/results" {% if request.url.path == "/results" %}class="active" aria-current="page"{% endif %}>結果一覧</a></li>

@@ -9,7 +9,7 @@
     <div class="card-body" style="background:var(--color-muted-bg)">
         <p style="font-size:0.85rem;font-weight:500;margin-bottom:0.25rem;color:var(--color-text-muted)">入力された研究テーマ</p>
         <p style="font-size:0.92rem;margin-bottom:0.75rem;line-height:1.8">{{ seed.description[:400] }}{% if seed.description|length > 400 %}...{% endif %}</p>
-        <div class="d-flex gap-3 flex-wrap" style="font-size:0.78rem;color:var(--color-text-subtle)">
+        <div class="d-flex gap-3 flex-wrap" style="font-size:0.85rem;color:var(--color-text-subtle)">
             <span>{{ result.company_count }}社を分析</span>
             <span>{{ result.duration_sec }}秒</span>
         </div>
@@ -42,19 +42,21 @@
 {% set section_id = "exit-" ~ exit.exit_type %}
 
 <div class="card mb-4">
-    {# Collapsible header #}
-    <div class="card-header" style="cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center"
-         onclick="document.getElementById('{{ section_id }}').classList.toggle('collapsed');this.querySelector('.chevron').classList.toggle('rotated')"
-         role="button" aria-expanded="{{ 'true' if is_recommended else 'false' }}" aria-controls="{{ section_id }}">
-        <div style="display:flex;align-items:center;gap:0.5rem">
+    {# Collapsible header — button for keyboard accessibility #}
+    <button type="button" class="card-header"
+            style="width:100%;text-align:left;border:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center"
+            aria-expanded="{{ 'true' if is_recommended else 'false' }}"
+            aria-controls="{{ section_id }}"
+            onclick="var t=document.getElementById('{{ section_id }}');t.classList.toggle('collapsed');this.setAttribute('aria-expanded',t.classList.contains('collapsed')?'false':'true');this.querySelector('.chevron').classList.toggle('rotated')">
+        <span style="display:flex;align-items:center;gap:0.5rem">
             <span style="font-size:1rem;font-weight:700;color:var(--color-text)">{{ exit.exit_label }}</span>
             {% if is_recommended %}
-            <span style="font-size:0.65rem;font-weight:600;padding:2px 8px;border-radius:4px;background:var(--color-accent);color:#fff">おすすめ</span>
+            <span style="font-size:0.7rem;font-weight:600;padding:2px 8px;border-radius:4px;background:var(--color-accent);color:#fff">おすすめ</span>
             {% endif %}
-            <span style="font-size:0.78rem;color:var(--color-text-subtle)">{{ exit.rankings|length }}社</span>
-        </div>
+            <span style="font-size:0.85rem;color:var(--color-text-subtle)">{{ exit.rankings|length }}社</span>
+        </span>
         <span class="chevron {{ '' if is_recommended else 'rotated' }}" style="font-size:0.8rem;color:var(--color-text-subtle);transition:transform 200ms">&#9660;</span>
-    </div>
+    </button>
 
     {# Collapsible body #}
     <div id="{{ section_id }}" class="{{ '' if is_recommended else 'collapsed' }}">
@@ -76,7 +78,7 @@
                 <a href="/company/{{ rc.edinet_code }}" style="font-size:1rem;font-weight:700;color:var(--color-text)">{{ rc.company_name }}</a>
                 <span class="badge" style="background:var(--color-muted-bg);color:var(--color-text-muted);font-size:0.7rem">{{ rc.industry }}</span>
             </div>
-            <div style="display:flex;gap:1.25rem;margin-bottom:0.75rem;font-size:0.78rem;color:var(--color-text-subtle)">
+            <div style="display:flex;gap:1.25rem;margin-bottom:0.75rem;font-size:0.85rem;color:var(--color-text-subtle)">
                 {% for dim_key, dim_label in exit_dims.get(exit.exit_type, []) %}
                 {% set fr = rc.feature_scores.get(dim_key) %}
                 {% if fr %}
@@ -102,12 +104,13 @@
         {% if exit.rankings|length > 3 %}
         {% set more_id = "more-" ~ exit.exit_type %}
         <div style="border-top:1px solid var(--color-border);padding:0.75rem 1.25rem">
-            <div style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:0.5rem;color:var(--color-text-muted);font-size:0.85rem"
-                 onclick="document.getElementById('{{ more_id }}').classList.toggle('collapsed');this.querySelector('.more-chevron').classList.toggle('rotated')"
-                 role="button" aria-expanded="false" aria-controls="{{ more_id }}">
+            <button type="button"
+                    style="background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:0.5rem;color:var(--color-text-muted);font-size:0.88rem;padding:0"
+                    aria-expanded="false" aria-controls="{{ more_id }}"
+                    onclick="var t=document.getElementById('{{ more_id }}');t.classList.toggle('collapsed');this.setAttribute('aria-expanded',t.classList.contains('collapsed')?'false':'true');this.querySelector('.more-chevron').classList.toggle('rotated')">
                 <span class="more-chevron rotated" style="font-size:0.7rem;transition:transform 200ms;display:inline-block">&#9660;</span>
                 <span style="font-weight:600">その他の候補企業（{{ exit.rankings|length - 3 }}社）</span>
-            </div>
+            </button>
         </div>
         <div id="{{ more_id }}" class="collapsed">
             {% for rc in exit.rankings[3:] %}
@@ -116,7 +119,7 @@
                     <span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--color-muted-bg);color:var(--color-text-muted);font-size:0.65rem;font-weight:700">{{ rc.rank }}</span>
                     <a href="/company/{{ rc.edinet_code }}" style="font-size:0.9rem;font-weight:600;color:var(--color-text)">{{ rc.company_name }}</a>
                     <span class="badge" style="background:var(--color-muted-bg);color:var(--color-text-muted);font-size:0.65rem">{{ rc.industry }}</span>
-                    <div style="display:flex;gap:0.75rem;margin-left:auto;font-size:0.72rem;color:var(--color-text-subtle)">
+                    <div style="display:flex;gap:0.75rem;margin-left:auto;font-size:0.82rem;color:var(--color-text-subtle)">
                         {% for dim_key, dim_label in exit_dims.get(exit.exit_type, []) %}
                         {% set fr = rc.feature_scores.get(dim_key) %}
                         {% if fr %}
@@ -224,7 +227,7 @@ function generateDetail(btn) {
             container.innerHTML = '<div class="hypothesis-detail">' + html + '</div>';
         })
         .catch(function() {
-            container.innerHTML = '<p style="color:#c00;font-size:0.82rem">詳細の生成に失敗しました。</p>';
+            container.innerHTML = '<p style="color:var(--color-danger);font-size:0.85rem;margin:0.5rem 0">詳細の生成に失敗しました。<button onclick="generateDetail(this.closest(\'[id^=detail-]\').querySelector(\'.btn-generate-detail\'))" style="margin-left:0.5rem;font-size:0.85rem;color:var(--color-accent);background:none;border:none;cursor:pointer;text-decoration:underline">再試行</button></p>';
         });
 }
 </script>
