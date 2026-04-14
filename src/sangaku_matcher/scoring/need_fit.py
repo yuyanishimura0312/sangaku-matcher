@@ -56,6 +56,7 @@ class NeedFitScorer:
         source = "文脈型" if company.get("tech_needs_vector") else "従来型"
 
         # Z-score normalization: convert to relative score
+        z = 0.0
         if self._mean is not None and self._std is not None:
             z = (raw_sim - self._mean) / self._std
             # Sigmoid maps z-score to [0, 1], centered at mean

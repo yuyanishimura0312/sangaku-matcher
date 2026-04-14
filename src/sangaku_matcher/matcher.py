@@ -1857,10 +1857,15 @@ def generate_detail_for_company(
 
     # Pre-compute similarity distributions for z-score normalization
     # (needs all companies, same as run_multi_exit_match)
-    with connect(settings.matcher_db_path) as conn2:
-        all_companies = _load_companies(conn2)
-    need_fit.precompute_distribution(seed.semantic_vector, all_companies)
-    tech_prox.precompute_distribution(seed.semantic_vector, all_companies)
+    try:
+        with connect(settings.matcher_db_path) as conn2:
+            all_companies = _load_companies(conn2)
+        need_fit.precompute_distribution(seed.semantic_vector, all_companies)
+        tech_prox.precompute_distribution(seed.semantic_vector, all_companies)
+    except Exception:
+        # If _load_companies fails (e.g. missing column), scores will use
+        # raw similarity instead of z-score normalized values
+        pass
 
     # NOTE: Do NOT deserialize vectors here — individual scorers handle
     # np.frombuffer internally. Passing pre-deserialized np.arrays would
