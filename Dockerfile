@@ -14,14 +14,17 @@ RUN pip install --no-cache-dir \
     onnxruntime "optimum[onnxruntime]" transformers tokenizers \
     sentence-transformers
 
-# Install app package from pyproject.toml only (cached unless deps change)
+# Install app package — copy full src for pip install, then remove.
+# The ONNX model layer below is the expensive step; it only depends on
+# pip packages, not on our source code. We re-COPY src/ later (after
+# the model layer) so source-only changes skip the model rebuild.
 COPY pyproject.toml .
-COPY src/sangaku_matcher/__init__.py src/sangaku_matcher/__init__.py
+COPY src/ src/
 RUN pip install --no-cache-dir --no-deps . && \
-    rm -rf /root/.cache
+    rm -rf /root/.cache src/
 
 # Export model to ONNX and quantize to int8 (~113MB vs 448MB)
-# This layer is cached because it doesn't depend on source code changes
+# This layer is cached as long as pip packages haven't changed
 RUN python -c "\
 from optimum.onnxruntime import ORTModelForFeatureExtraction, ORTQuantizer; \
 from optimum.onnxruntime.configuration import AutoQuantizationConfig; \
