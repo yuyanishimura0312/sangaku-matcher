@@ -19,7 +19,24 @@
         <button type="submit" class="btn btn-primary btn-lg w-100 mt-3" id="submit-btn">仮説を構築</button>
     </form>
 
-    <div style="margin-top:1.5rem;padding:1rem;background:var(--color-muted-bg);border-radius:8px">
+    {# Loading animation (hidden by default, shown on submit) #}
+    <div id="loading" class="loading-section" style="display:none">
+        <div class="loading-visual">
+            <div class="loading-ring"></div>
+            <div class="loading-ring-inner"></div>
+            <div class="loading-icon">&#9883;</div>
+        </div>
+        <div style="color:var(--color-text);font-size:14px;font-weight:600;margin-bottom:12px">連携仮説を構築中</div>
+        <ul class="loading-steps" id="loadingSteps">
+            <li class="active" id="step1"><span class="step-check"></span>研究テーマを解析中</li>
+            <li id="step2"><span class="step-check"></span>122テーマとの類似度を計算中</li>
+            <li id="step3"><span class="step-check"></span>企業データベースを照合中</li>
+            <li id="step4"><span class="step-check"></span>3つの出口ルートでランキング中</li>
+            <li id="step5"><span class="step-check"></span>連携仮説を生成中</li>
+        </ul>
+    </div>
+
+    <div id="info-block" style="margin-top:1.5rem;padding:1rem;background:var(--color-muted-bg);border-radius:8px">
         <p style="font-size:0.82rem;color:var(--color-text-muted);margin:0;line-height:1.7">
             <strong>3軸122テーマによるマッチング:</strong>
             有価証券報告書のテキストをGTAに着想を得たボトムアップ分析で構造化した3つのテーマ体系を使い、研究テーマとの多角的な連携仮説を構築します。
@@ -30,11 +47,38 @@
 </div>
 
 <script>
-document.getElementById('hypothesis-form').addEventListener('submit', function() {
-    const btn = document.getElementById('submit-btn');
-    btn.disabled = true;
-    btn.classList.add('btn-loading');
-    btn.textContent = '仮説構築中...';
-});
+(function() {
+    let _stepInterval = null;
+
+    function startLoadingSteps() {
+        const steps = document.querySelectorAll('#loadingSteps li');
+        steps.forEach(s => { s.className = ''; });
+        if (steps[0]) steps[0].className = 'active';
+        let idx = 0;
+        _stepInterval = setInterval(() => {
+            if (steps[idx]) {
+                steps[idx].className = 'done';
+                steps[idx].querySelector('.step-check').textContent = '\u2713';
+            }
+            idx++;
+            if (idx < steps.length) {
+                steps[idx].className = 'active';
+            } else {
+                clearInterval(_stepInterval);
+                _stepInterval = null;
+            }
+        }, 4000);
+    }
+
+    document.getElementById('hypothesis-form').addEventListener('submit', function() {
+        const btn = document.getElementById('submit-btn');
+        btn.disabled = true;
+        btn.classList.add('btn-loading');
+        btn.textContent = '仮説構築中...';
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('info-block').style.display = 'none';
+        startLoadingSteps();
+    });
+})();
 </script>
 {% endblock %}

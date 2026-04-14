@@ -72,6 +72,29 @@
                 <span class="badge" style="background:var(--color-muted-bg);color:var(--color-text-muted);font-size:0.7rem">{{ rc.industry }}</span>
             </div>
 
+            {# Score indicators by exit type #}
+            {% set exit_dims = {
+                "rd": [("need_fit", "ニーズ適合"), ("tech_prox", "技術近接"), ("abs_cap", "吸収力")],
+                "new_domain": [("ambition_fit", "野心適合"), ("humanities_fit", "人文親和"), ("open_inno", "OI度")],
+                "exploratory": [("theme_breadth", "テーマ幅"), ("humanities_fit", "人文親和"), ("ambition_fit", "野心適合")]
+            } %}
+            {% set exit_colors = {"rd": "#2E7D6B", "new_domain": "#7B4EA3", "exploratory": "#A86B50"} %}
+            {% set ecolor = exit_colors.get(exit.exit_type, "var(--color-accent)") %}
+            <div style="display:flex;gap:1.25rem;margin-bottom:0.75rem;font-size:0.78rem;color:var(--color-text-subtle)">
+                {% for dim_key, dim_label in exit_dims.get(exit.exit_type, []) %}
+                {% set fr = rc.feature_scores.get(dim_key) %}
+                {% if fr %}
+                <div style="display:flex;align-items:center;gap:0.35rem">
+                    <span>{{ dim_label }}</span>
+                    <div style="width:48px;height:6px;background:var(--color-muted-bg);border-radius:3px;overflow:hidden">
+                        <div style="width:{{ (fr.value * 100)|int }}%;height:100%;background:{{ ecolor }};border-radius:3px"></div>
+                    </div>
+                    <strong style="color:{{ ecolor }};font-size:0.75rem">{{ "%.0f"|format(fr.value * 100) }}%</strong>
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+
             {# Hypothesis text #}
             {% if rc.overall_comment %}
             <div style="background:var(--color-muted-bg);padding:1rem 1.15rem;border-radius:8px;font-size:0.88rem;line-height:1.9;color:var(--color-text)">

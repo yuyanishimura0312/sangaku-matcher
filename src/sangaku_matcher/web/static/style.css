@@ -382,6 +382,68 @@ a:hover {
     to { transform: rotate(360deg); }
 }
 
+/* ===== Loading animation (dual-ring + steps) ===== */
+.loading-section { text-align: center; padding: 32px 20px; }
+.loading-visual { position: relative; width: 120px; height: 120px; margin: 0 auto 20px; }
+.loading-ring {
+    width: 120px; height: 120px;
+    border: 3px solid var(--color-border);
+    border-top-color: var(--color-accent);
+    border-right-color: var(--color-success);
+    border-radius: 50%;
+    animation: spin 1.2s linear infinite;
+}
+.loading-ring-inner {
+    position: absolute; top: 15px; left: 15px;
+    width: 90px; height: 90px;
+    border: 2px solid var(--color-border);
+    border-bottom-color: var(--color-accent);
+    border-left-color: var(--color-warning);
+    border-radius: 50%;
+    animation: spin-reverse 1.8s linear infinite;
+}
+.loading-icon {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 28px;
+    animation: pulse 2s ease-in-out infinite;
+    color: var(--color-accent);
+}
+@keyframes spin-reverse { to { transform: rotate(-360deg); } }
+@keyframes pulse {
+    0%, 100% { opacity: .4; transform: translate(-50%, -50%) scale(.9); }
+    50% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+}
+
+.loading-steps {
+    list-style: none; text-align: left;
+    display: inline-block; margin-top: 8px; padding: 0;
+}
+.loading-steps li {
+    font-size: 12px; color: var(--color-text-subtle);
+    padding: 4px 0; transition: all .3s;
+    display: flex; align-items: center; gap: 8px;
+}
+.loading-steps li.active { color: var(--color-accent); font-weight: 600; }
+.loading-steps li.done { color: var(--color-success); }
+.loading-steps li .step-check {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 1.5px solid var(--color-border);
+    font-size: 10px; flex-shrink: 0;
+}
+.loading-steps li.done .step-check {
+    background: var(--color-success); border-color: var(--color-success); color: #fff;
+}
+.loading-steps li.active .step-check {
+    border-color: var(--color-accent);
+    animation: pulse-dot 1s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(168, 107, 80, 0.3); }
+    50% { box-shadow: 0 0 0 6px rgba(168, 107, 80, 0); }
+}
+
 /* Focus visible — accessibility keyboard navigation */
 :focus-visible {
     outline: 2px solid var(--color-accent);
