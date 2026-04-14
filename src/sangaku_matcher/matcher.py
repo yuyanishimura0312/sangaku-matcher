@@ -1855,10 +1855,9 @@ def generate_detail_for_company(
     ambition_fit.precompute_seed_themes(seed.semantic_vector)
     theme_breadth.precompute_seed_themes(seed.semantic_vector)
 
-    # Deserialize vectors
-    for vk in ("rd_text_vector", "needs_vector", "tech_needs_vector", "ambitions_vector"):
-        raw = co.get(vk)
-        co[vk] = np.frombuffer(raw, dtype=np.float32) if raw else np.zeros(384)
+    # NOTE: Do NOT deserialize vectors here — individual scorers handle
+    # np.frombuffer internally. Passing pre-deserialized np.arrays would
+    # cause "truth value of an array is ambiguous" errors in scorer code.
 
     # All scorers
     scorers = [
