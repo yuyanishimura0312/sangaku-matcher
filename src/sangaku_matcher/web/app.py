@@ -728,6 +728,8 @@ async def generate_detail(
     seed_description: str = Form(...),
 ):
     """Generate detailed hypothesis for a lower-ranked company on demand."""
+    import logging
+    logger = logging.getLogger(__name__)
     from sangaku_matcher.seeds import parse_seed
     from sangaku_matcher.matcher import generate_detail_for_company
 
@@ -737,8 +739,9 @@ async def generate_detail(
             title=seed_description[:60],
         )
         html = generate_detail_for_company(edinet_code, exit_type, seed)
-    except Exception:
-        html = "<p>詳細の生成中にエラーが発生しました。</p>"
+    except Exception as e:
+        logger.exception("generate_detail failed for %s/%s", edinet_code, exit_type)
+        html = f"<p>詳細の生成中にエラーが発生しました: {type(e).__name__}: {e}</p>"
 
     return HTMLResponse(html)
 
