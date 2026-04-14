@@ -1795,11 +1795,8 @@ def generate_detail_for_company(
     Runs the full scoring pipeline for just that one company and returns
     the detailed (non-brief) hypothesis HTML.
     """
-    from sangaku_matcher.scoring import (
-        NeedFitScorer, TechProxScorer, AbsCapScorer, PastTiesScorer,
-        HumanitiesFitScorer, OpenInnoScorer, AmbitionFitScorer,
-        ThemeBreadthScorer, FutureOptionScorer,
-    )
+    import numpy as np
+    from sangaku_matcher.scoring.future_option import FutureOptionScorer as _FO
 
     with connect(settings.matcher_db_path) as conn:
         co = conn.execute(
@@ -1823,27 +1820,55 @@ def generate_detail_for_company(
         if company_text.get("industry"):
             peers = _load_industry_peers(conn, company_text["industry"], edinet_code)
 
-        # Load collaboration data
+        # Load supporting data
         collab_data = _load_collaboration_data(conn)
         industry_stats = _load_industry_stats(conn)
 
+        # Initialize scorers (mirroring run_multi_exit_match)
+        tech_prox = TechProxScorer()
+        need_fit = NeedFitScorer()
+
+        abs_cap = AbsCapScorer()
+        abs_cap.set_industry_stats(industry_stats)
+
+        past_ties = PastTiesScorer()
+        past_ties.set_collaboration_data(collab_data)
+
+        future_option = _FO()
+        future_option.set_industry_stats(industry_stats)
+
+        open_inno = OpenInnoScorer()
+        open_inno.set_collaboration_data(collab_data)
+        open_inno.set_industry_stats(industry_stats)
+
+        humanities_fit = ThemeFitScorer()
+        ambition_fit = AmbitionFitScorer()
+        theme_breadth = ThemeBreadthScorer()
+
+        # Load theme data
+        humanities_fit.load_themes(conn)
+        ambition_fit.load_themes(conn)
+        theme_breadth.load_all_themes(conn)
+
+    # Precompute seed themes
+    humanities_fit.precompute_seed_themes(seed.semantic_vector)
+    ambition_fit.precompute_seed_themes(seed.semantic_vector)
+    theme_breadth.precompute_seed_themes(seed.semantic_vector)
+
     # Deserialize vectors
-    import numpy as np
     for vk in ("rd_text_vector", "needs_vector", "tech_needs_vector", "ambitions_vector"):
         raw = co.get(vk)
         co[vk] = np.frombuffer(raw, dtype=np.float32) if raw else np.zeros(384)
 
-    # Build scorers (same set as run_multi_exit_match, synergy computed manually)
-    theme_breadth = ThemeBreadthScorer()
+    # All scorers
     scorers = [
-        NeedFitScorer(), TechProxScorer(), AbsCapScorer(),
-        PastTiesScorer(collab_data), HumanitiesFitScorer(),
-        OpenInnoScorer(), AmbitionFitScorer(),
-        theme_breadth, FutureOptionScorer(),
+        tech_prox, need_fit, abs_cap, past_ties,
+        future_option, open_inno, humanities_fit,
+        ambition_fit, theme_breadth,
     ]
 
     # Score this one company
-    features = {}
+    features: dict[str, FeatureResult] = {}
     for scorer in scorers:
         fr = scorer.score(seed.semantic_vector, co)
         features[scorer.name] = fr
