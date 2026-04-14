@@ -128,6 +128,15 @@
                 {% if rc.overall_comment %}
                 <p style="font-size:0.82rem;color:var(--color-text-muted);margin:0;line-height:1.7;padding-left:28px">{{ rc.overall_comment }}</p>
                 {% endif %}
+                <div id="detail-{{ exit.exit_type }}-{{ rc.edinet_code }}" style="padding-left:28px;margin-top:0.5rem">
+                    <button class="btn-generate-detail"
+                            data-edinet="{{ rc.edinet_code }}"
+                            data-exit="{{ exit.exit_type }}"
+                            onclick="generateDetail(this)"
+                            style="font-size:0.75rem;padding:0.3rem 0.75rem;border:1px solid var(--color-accent);color:var(--color-accent);background:transparent;border-radius:4px;cursor:pointer;transition:all 150ms">
+                        詳細を生成
+                    </button>
+                </div>
             </div>
             {% endfor %}
         </div>
@@ -189,4 +198,31 @@
 <div class="print-title">
     sangaku-matcher 連携候補分析レポート
 </div>
+
+<script>
+function generateDetail(btn) {
+    var code = btn.getAttribute('data-edinet');
+    var exit = btn.getAttribute('data-exit');
+    var container = document.getElementById('detail-' + exit + '-' + code);
+    var desc = {{ seed.description|tojson }};
+
+    btn.disabled = true;
+    btn.textContent = '生成中...';
+    btn.style.opacity = '0.6';
+
+    var form = new FormData();
+    form.append('edinet_code', code);
+    form.append('exit_type', exit);
+    form.append('seed_description', desc);
+
+    fetch('/api/generate-detail', {method: 'POST', body: form})
+        .then(function(r) { return r.text(); })
+        .then(function(html) {
+            container.innerHTML = '<div class="hypothesis-detail">' + html + '</div>';
+        })
+        .catch(function() {
+            container.innerHTML = '<p style="color:#c00;font-size:0.82rem">詳細の生成に失敗しました。</p>';
+        });
+}
+</script>
 {% endblock %}

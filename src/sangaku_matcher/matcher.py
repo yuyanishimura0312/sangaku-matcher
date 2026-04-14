@@ -1784,6 +1784,95 @@ def run_multi_exit_match(seed: Seed, top_n: int | None = None) -> MultiExitMatch
     return result
 
 
+def generate_detail_for_company(
+    edinet_code: str,
+    exit_type: str,
+    seed: Seed,
+) -> str:
+    """Generate detailed hypothesis for a single company on demand.
+
+    Used when the user clicks "詳細を生成" on a 4th-and-below ranked company.
+    Runs the full scoring pipeline for just that one company and returns
+    the detailed (non-brief) hypothesis HTML.
+    """
+    from sangaku_matcher.scoring import (
+        NeedFitScorer, TechProxScorer, AbsCapScorer, PastTiesScorer,
+        HumanitiesFitScorer, OpenInnoScorer, AmbitionFitScorer,
+        ThemeBreadthScorer, FutureOptionScorer,
+    )
+
+    with connect(settings.matcher_db_path) as conn:
+        co = conn.execute(
+            """SELECT edinet_code, name, industry, sec_code, revenue,
+                      rd_expense, rd_intensity, employees, market_cap,
+                      rd_text_vector, needs_vector, open_inno_score,
+                      LENGTH(rd_text) AS rd_text_len,
+                      tech_needs_vector, tech_needs_text,
+                      ambitions_vector, ambitions_json
+               FROM companies WHERE edinet_code = ?""",
+            (edinet_code,),
+        ).fetchone()
+        if not co:
+            return "<p>企業が見つかりません。</p>"
+        co = dict(co)
+
+        # Load full text and peers
+        company_texts = _load_company_texts(conn, [edinet_code])
+        company_text = company_texts.get(edinet_code, {})
+        peers = []
+        if company_text.get("industry"):
+            peers = _load_industry_peers(conn, company_text["industry"], edinet_code)
+
+        # Load collaboration data
+        collab_data = _load_collaboration_data(conn)
+        industry_stats = _load_industry_stats(conn)
+
+    # Deserialize vectors
+    import numpy as np
+    for vk in ("rd_text_vector", "needs_vector", "tech_needs_vector", "ambitions_vector"):
+        raw = co.get(vk)
+        co[vk] = np.frombuffer(raw, dtype=np.float32) if raw else np.zeros(384)
+
+    # Build scorers (same set as run_multi_exit_match, synergy computed manually)
+    theme_breadth = ThemeBreadthScorer()
+    scorers = [
+        NeedFitScorer(), TechProxScorer(), AbsCapScorer(),
+        PastTiesScorer(collab_data), HumanitiesFitScorer(),
+        OpenInnoScorer(), AmbitionFitScorer(),
+        theme_breadth, FutureOptionScorer(),
+    ]
+
+    # Score this one company
+    features = {}
+    for scorer in scorers:
+        fr = scorer.score(seed.semantic_vector, co)
+        features[scorer.name] = fr
+
+    # Cache matching_themes from theme_breadth
+    matching_themes = list(theme_breadth.matching_themes)
+
+    # Compute synergy (same as run_multi_exit_match)
+    nf_val = features.get("need_fit", FeatureResult(0, "")).value
+    hf_val = features.get("humanities_fit", FeatureResult(0, "")).value
+    oi_val = features.get("open_inno", FeatureResult(0, "")).value
+    synergy = (nf_val * hf_val) ** 0.5
+    if oi_val > 0.3:
+        synergy *= 1.0 + 0.2 * oi_val
+    synergy = min(1.0, synergy)
+    features["synergy"] = FeatureResult(
+        value=round(synergy, 4),
+        rationale=f"技術ニーズ({nf_val:.2f})x人文系({hf_val:.2f})のシナジー。",
+    )
+
+    # Generate detailed hypothesis
+    return _generate_exit_hypothesis(
+        exit_type, co["name"], features, matching_themes,
+        brief=False,
+        company_text=company_text,
+        peers=peers,
+    )
+
+
 def _save_match_result(result: MatchResult) -> None:
     """Persist seed and match results to DB."""
     with connect(settings.matcher_db_path) as conn:

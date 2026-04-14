@@ -720,6 +720,29 @@ async def company_detail(request: Request, edinet_code: str):
     })
 
 
+@app.post("/api/generate-detail", response_class=HTMLResponse)
+async def generate_detail(
+    request: Request,
+    edinet_code: str = Form(...),
+    exit_type: str = Form(...),
+    seed_description: str = Form(...),
+):
+    """Generate detailed hypothesis for a lower-ranked company on demand."""
+    from sangaku_matcher.seeds import parse_seed
+    from sangaku_matcher.matcher import generate_detail_for_company
+
+    try:
+        seed = parse_seed(
+            description=seed_description,
+            title=seed_description[:60],
+        )
+        html = generate_detail_for_company(edinet_code, exit_type, seed)
+    except Exception:
+        html = "<p>詳細の生成中にエラーが発生しました。</p>"
+
+    return HTMLResponse(html)
+
+
 # JSON API
 @app.post("/api/match")
 async def api_match(payload: dict):
