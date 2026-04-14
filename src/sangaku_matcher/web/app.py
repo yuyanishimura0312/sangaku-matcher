@@ -45,7 +45,7 @@ async def match(
     title: str = Form(""),
     doi: str = Form(""),
     patent_no: str = Form(""),
-    top_n: int = Form(3),
+    top_n: int = Form(10),
 ):
     from sangaku_matcher.seeds import parse_seed
     from sangaku_matcher.matcher import run_multi_exit_match
@@ -82,7 +82,7 @@ async def match(
 async def hypothesis_match(
     request: Request,
     description: str = Form(...),
-    top_n: int = Form(3),
+    top_n: int = Form(10),
 ):
     """Redirect legacy /hypothesis to multi-exit /match."""
     from sangaku_matcher.seeds import parse_seed

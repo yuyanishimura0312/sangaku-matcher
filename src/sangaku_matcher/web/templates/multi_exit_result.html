@@ -62,24 +62,22 @@
             <p style="font-size:0.82rem;color:var(--color-text-muted);margin:0;line-height:1.7">{{ exit.exit_description }}</p>
         </div>
 
-        {# Company cards #}
-        {% for rc in exit.rankings %}
+        {# ── Top 3 company cards (detailed) ── #}
+        {% set exit_dims = {
+            "rd": [("need_fit", "ニーズ適合"), ("tech_prox", "技術近接"), ("abs_cap", "吸収力")],
+            "new_domain": [("ambition_fit", "野心適合"), ("humanities_fit", "人文親和"), ("open_inno", "OI度")],
+            "exploratory": [("theme_breadth", "テーマ幅"), ("humanities_fit", "人文親和"), ("ambition_fit", "野心適合")]
+        } %}
+        {% set exit_colors = {"rd": "#2E7D6B", "new_domain": "#7B4EA3", "exploratory": "#A86B50"} %}
+        {% set ecolor = exit_colors.get(exit.exit_type, "var(--color-accent)") %}
+
+        {% for rc in exit.rankings[:3] %}
         <div style="border-top:1px solid var(--color-border);padding:1.25rem">
-            {# Company header #}
             <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem">
                 <span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:var(--color-accent);color:#fff;font-size:0.75rem;font-weight:700">{{ rc.rank }}</span>
                 <a href="/company/{{ rc.edinet_code }}" style="font-size:1rem;font-weight:700;color:var(--color-text)">{{ rc.company_name }}</a>
                 <span class="badge" style="background:var(--color-muted-bg);color:var(--color-text-muted);font-size:0.7rem">{{ rc.industry }}</span>
             </div>
-
-            {# Score indicators by exit type #}
-            {% set exit_dims = {
-                "rd": [("need_fit", "ニーズ適合"), ("tech_prox", "技術近接"), ("abs_cap", "吸収力")],
-                "new_domain": [("ambition_fit", "野心適合"), ("humanities_fit", "人文親和"), ("open_inno", "OI度")],
-                "exploratory": [("theme_breadth", "テーマ幅"), ("humanities_fit", "人文親和"), ("ambition_fit", "野心適合")]
-            } %}
-            {% set exit_colors = {"rd": "#2E7D6B", "new_domain": "#7B4EA3", "exploratory": "#A86B50"} %}
-            {% set ecolor = exit_colors.get(exit.exit_type, "var(--color-accent)") %}
             <div style="display:flex;gap:1.25rem;margin-bottom:0.75rem;font-size:0.78rem;color:var(--color-text-subtle)">
                 {% for dim_key, dim_label in exit_dims.get(exit.exit_type, []) %}
                 {% set fr = rc.feature_scores.get(dim_key) %}
@@ -94,8 +92,6 @@
                 {% endif %}
                 {% endfor %}
             </div>
-
-            {# Hypothesis text #}
             {% if rc.overall_comment %}
             <div style="background:var(--color-muted-bg);padding:1rem 1.15rem;border-radius:8px;font-size:0.88rem;line-height:1.9;color:var(--color-text)">
                 {{ rc.overall_comment }}
@@ -103,6 +99,41 @@
             {% endif %}
         </div>
         {% endfor %}
+
+        {# ── Lower-ranked companies (4th onwards, collapsible) ── #}
+        {% if exit.rankings|length > 3 %}
+        {% set more_id = "more-" ~ exit.exit_type %}
+        <div style="border-top:1px solid var(--color-border);padding:0.75rem 1.25rem">
+            <div style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:0.5rem;color:var(--color-text-muted);font-size:0.85rem"
+                 onclick="document.getElementById('{{ more_id }}').classList.toggle('collapsed');this.querySelector('.more-chevron').classList.toggle('rotated')"
+                 role="button" aria-expanded="false" aria-controls="{{ more_id }}">
+                <span class="more-chevron rotated" style="font-size:0.7rem;transition:transform 200ms;display:inline-block">&#9660;</span>
+                <span style="font-weight:600">その他の候補企業（{{ exit.rankings|length - 3 }}社）</span>
+            </div>
+        </div>
+        <div id="{{ more_id }}" class="collapsed">
+            {% for rc in exit.rankings[3:] %}
+            <div style="border-top:1px solid var(--color-border);padding:0.85rem 1.25rem">
+                <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem">
+                    <span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--color-muted-bg);color:var(--color-text-muted);font-size:0.65rem;font-weight:700">{{ rc.rank }}</span>
+                    <a href="/company/{{ rc.edinet_code }}" style="font-size:0.9rem;font-weight:600;color:var(--color-text)">{{ rc.company_name }}</a>
+                    <span class="badge" style="background:var(--color-muted-bg);color:var(--color-text-muted);font-size:0.65rem">{{ rc.industry }}</span>
+                    <div style="display:flex;gap:0.75rem;margin-left:auto;font-size:0.72rem;color:var(--color-text-subtle)">
+                        {% for dim_key, dim_label in exit_dims.get(exit.exit_type, []) %}
+                        {% set fr = rc.feature_scores.get(dim_key) %}
+                        {% if fr %}
+                        <span>{{ dim_label }} <strong style="color:{{ ecolor }}">{{ "%.0f"|format(fr.value * 100) }}%</strong></span>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+                {% if rc.overall_comment %}
+                <p style="font-size:0.82rem;color:var(--color-text-muted);margin:0;line-height:1.7;padding-left:28px">{{ rc.overall_comment }}</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
     </div>
 </div>
 {% endfor %}
@@ -111,7 +142,7 @@
 
 <style>
 .collapsed { display: none; }
-.chevron { display: inline-block; }
-.chevron.rotated { transform: rotate(-90deg); }
+.chevron, .more-chevron { display: inline-block; }
+.chevron.rotated, .more-chevron.rotated { transform: rotate(-90deg); }
 </style>
 {% endblock %}

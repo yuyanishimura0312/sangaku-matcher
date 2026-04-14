@@ -543,6 +543,7 @@ def _generate_exit_hypothesis(
     company_name: str,
     features: dict[str, FeatureResult],
     cached_matching_themes: list[dict],
+    brief: bool = False,
 ) -> str:
     """Generate an exit-specific hypothesis text for a company.
 
@@ -552,6 +553,8 @@ def _generate_exit_hypothesis(
         features: Scorer results keyed by scorer name.
         cached_matching_themes: Matching theme list captured during the initial
             score() call — avoids a redundant second score() invocation.
+        brief: If True, generate a short summary (~200 chars) for lower-ranked
+            companies. If False, generate a detailed hypothesis (~1000 chars).
 
     Returns:
         Human-readable hypothesis string in Japanese.
@@ -564,6 +567,7 @@ def _generate_exit_hypothesis(
     oi = features.get("open_inno", FeatureResult(0, ""))
     af = features.get("ambition_fit", FeatureResult(0, ""))
     tb = features.get("theme_breadth", FeatureResult(0, ""))
+    fo = features.get("future_option", FeatureResult(0, ""))
 
     # Helper: extract top theme names from a scorer's rationale
     def _extract_theme_names(rationale: str, max_n: int = 3) -> list[str]:
@@ -582,79 +586,248 @@ def _generate_exit_hypothesis(
     # Helper: extract humanities_role from ambition_fit rationale
     def _extract_humanities_role(rationale: str) -> str:
         """Pull the humanities_role sentence from ambition_fit rationale."""
-        # humanities_role follows the theme list, starts with a full sentence
         parts = rationale.split("。")
         for p in parts:
             p = p.strip()
-            # humanities_role sentences typically reference academic disciplines
             if any(kw in p for kw in ["学の", "論の", "研究の", "学的", "倫理"]) and len(p) > 20:
                 return p + "。"
         return ""
 
+    # Helper: extract matching tech theme names from need_fit / tech_prox rationale
+    def _extract_tech_themes(rationale: str, max_n: int = 3) -> list[str]:
+        names = []
+        for marker in ["高親和:", "高類似:", "上位:"]:
+            if marker in rationale:
+                after = rationale.split(marker)[1]
+                for part in after.split(";"):
+                    part = part.strip()
+                    if "(" in part:
+                        name = part.split("(")[0].strip()
+                        if name and len(name) > 2:
+                            names.append(name)
+                break
+        return names[:max_n]
+
+    # ── Brief mode: short summary for lower-ranked companies ──
+    if brief:
+        if exit_type == "rd":
+            tech_themes = _extract_tech_themes(nf.rationale) or _extract_tech_themes(tp.rationale)
+            if tech_themes:
+                return f"技術テーマ「{'」「'.join(tech_themes[:2])}」で接点あり。ニーズ適合{nf.value*100:.0f}%、吸収力{ac.value*100:.0f}%。"
+            return f"技術ニーズとの適合{nf.value*100:.0f}%。R&D体制（吸収力{ac.value*100:.0f}%）を有する企業。"
+        elif exit_type == "new_domain":
+            theme_names = _extract_theme_names(af.rationale)
+            if theme_names:
+                return f"新領域「{'」「'.join(theme_names[:2])}」で連携可能性。野心適合{af.value*100:.0f}%、OI度{oi.value*100:.0f}%。"
+            return f"新事業領域への野心適合{af.value*100:.0f}%。オープンイノベーション体制{oi.value*100:.0f}%。"
+        else:
+            n_themes = len(cached_matching_themes)
+            if n_themes > 0:
+                axes = set(m.get("axis", "") for m in cached_matching_themes[:5])
+                axis_labels = [{"humanities": "社会課題", "tech": "技術", "ambition": "新規事業"}.get(a, "") for a in axes]
+                axis_labels = [a for a in axis_labels if a]
+                return f"{'・'.join(axis_labels)}の{n_themes}テーマで接点。対話を通じた連携テーマの探索が見込まれる。"
+            return f"テーマ幅{tb.value*100:.0f}%。異なる視点からの対話を通じた接点発見の余地あり。"
+
+    # ── Detailed mode: comprehensive hypothesis for top-ranked companies ──
     if exit_type == "rd":
-        # R&D: concrete tech alignment narrative
         parts = []
-        parts.append(
-            f"{company_name}は、有価証券報告書の分析から、"
-            f"当該研究シーズと関連性の高い技術課題を抱えていると推定されます。"
-        )
+        # 1. Overview: what matching found
+        tech_themes = _extract_tech_themes(nf.rationale) or _extract_tech_themes(tp.rationale)
+        if tech_themes:
+            theme_str = "「" + "」「".join(tech_themes) + "」"
+            parts.append(
+                f"{company_name}は、有価証券報告書のテキスト分析から、"
+                f"{theme_str}といった技術テーマにおいて"
+                f"当該研究シーズとの高い親和性が確認されました（ニーズ適合度{nf.value*100:.0f}%、"
+                f"技術近接度{tp.value*100:.0f}%）。"
+                f"これらのスコアは、同社の有価証券報告書に記載された"
+                f"研究開発方針・技術課題と、入力された研究テーマの"
+                f"意味的類似度を多言語埋め込みモデルで算出したものです。"
+            )
+        else:
+            parts.append(
+                f"{company_name}は、有価証券報告書のテキスト分析から、"
+                f"当該研究シーズと関連性の高い技術課題を抱えていると推定されます"
+                f"（ニーズ適合度{nf.value*100:.0f}%、技術近接度{tp.value*100:.0f}%）。"
+                f"これらのスコアは、同社が開示する研究開発方針や事業リスクの記述と、"
+                f"入力された研究テーマとの意味的近さを定量化したものです。"
+            )
+
+        # 2. Absorptive capacity and past collaboration
         if ac.value > 0.5 and pt.value > 0.2:
             parts.append(
-                f"同社はR&D投資が活発で、大学との共同研究実績も確認されており、"
-                f"産学連携の受け入れ体制が整った企業です。"
+                f"同社のR&D投資水準は業界内で高く（吸収力スコア{ac.value*100:.0f}%）、"
+                f"大学・研究機関との共同研究実績も確認されています。"
+                f"これは、Cohen & Levinthal（1990）の吸収能力理論が示すように、"
+                f"外部知識を認識・吸収・活用する組織的能力が備わっていることを意味します。"
+                f"産学連携において、企業側の吸収能力の高さは"
+                f"研究成果の事業化確度を左右する最も重要な要因の一つです。"
             )
         elif ac.value > 0.5:
             parts.append(
-                f"同社はR&D投資が活発で、外部の研究知見を事業に取り込む"
-                f"組織的な体制を持っています。"
+                f"同社はR&D投資が活発で（吸収力スコア{ac.value*100:.0f}%）、"
+                f"外部の研究知見を事業に取り込む組織的な体制を持っています。"
+                f"ただし大学との連携実績は限定的であるため、初期段階では"
+                f"技術移転オフィス（TLO）や産学連携コーディネーターを介した"
+                f"段階的なアプローチが有効です。"
+                f"企業の技術部門に研究の価値を理解できる人材がいる場合、"
+                f"連携のハードルは大幅に下がります。"
             )
         elif pt.value > 0.2:
             parts.append(
-                f"同社は大学との連携実績があり、"
-                f"産学連携の進め方について一定の経験を有しています。"
+                f"同社は大学との連携実績があり、産学連携の進め方について"
+                f"一定の経験を有しています。一方でR&D投資の規模（{ac.value*100:.0f}%）から、"
+                f"受け入れ可能な研究のスコープについては事前に確認が必要です。"
+                f"連携実績のある企業は、共同研究の契約プロセスや"
+                f"知財の取り扱いに関する社内手続きが整備されていることが多く、"
+                f"スムーズな連携開始が期待できます。"
             )
+        else:
+            parts.append(
+                f"同社のR&D投資水準（{ac.value*100:.0f}%）や大学連携実績は"
+                f"現時点では中程度ですが、技術ニーズとの適合度の高さは"
+                f"共同研究の動機づけとして十分な水準です。"
+                f"産学連携が初めての企業には、まず受託研究や技術コンサルティングなど"
+                f"比較的軽いスキームから関係を構築し、信頼醸成を経て"
+                f"共同研究に移行するアプローチが推奨されます。"
+            )
+
+        # 3. Open innovation readiness
+        if oi.value > 0.4:
+            parts.append(
+                f"オープンイノベーションへの姿勢も積極的で（OIスコア{oi.value*100:.0f}%）、"
+                f"CVC（コーポレートベンチャーキャピタル）や"
+                f"アクセラレータープログラムなどの仕組みを通じて、"
+                f"外部との協業に対する組織的な受容性が高いと判断されます。"
+            )
+        elif oi.value > 0.2:
+            parts.append(
+                f"オープンイノベーションへの取り組みも確認されています（OIスコア{oi.value*100:.0f}%）。"
+                f"外部連携の窓口が明確な企業では、アプローチの初期段階が円滑に進みます。"
+            )
+
+        # 4. Expected collaboration outcomes
         parts.append(
-            f"共同研究の具体的なテーマ設定に向けて、"
-            f"まず技術担当者との面談を通じて課題の詳細を確認することを推奨します。"
+            f"【想定される連携成果】"
+            f"共同研究が実現した場合、共著論文の発表、"
+            f"特許の共同出願、プロトタイプの開発などが"
+            f"期待される成果です。"
+        )
+        if nf.value > 0.7:
+            parts.append(
+                f"特にニーズ適合度の高さから、研究成果の"
+                f"実用化・事業化に直結する可能性が高いと評価されます。"
+            )
+
+        # 5. Expert recommendation on collaboration approach
+        parts.append(
+            f"【産学連携の観点から】"
+            f"共同研究の具体的なテーマ設定に向けては、"
+            f"まず企業側の技術担当者・研究開発部門との面談を通じて、"
+            f"有報に記載された課題の詳細と優先度を確認することを推奨します。"
+            f"初期段階ではNDA（秘密保持契約）締結後の技術ディスカッション（3〜6ヶ月）を経て、"
+            f"共同研究契約へ移行するのが一般的なプロセスです。"
+            f"知的財産の取り扱いについては、大学の知財ポリシーと"
+            f"企業側の秘密保持要件を早期に擦り合わせることが重要です。"
+            f"資金面では、企業からの受託研究費に加え、NEDO・JST等の"
+            f"マッチングファンドの活用も検討すべきです。"
+            f"特にJSTのA-STEPや産学共創プラットフォームは、"
+            f"このタイプの連携に適した支援制度です。"
         )
         return "".join(parts)
 
     elif exit_type == "new_domain":
-        # New domain: ambition themes + how researcher can contribute
         theme_names = _extract_theme_names(af.rationale)
         hum_role = _extract_humanities_role(af.rationale)
 
         parts = []
+        # 1. Company's ambition direction
         if theme_names:
-            theme_str = "「" + "」「".join(theme_names[:2]) + "」"
+            theme_str = "「" + "」「".join(theme_names) + "」"
             parts.append(
                 f"{company_name}は、{theme_str}"
                 f"といった新しい事業領域への挑戦を"
-                f"有価証券報告書で示しています。"
+                f"有価証券報告書で明示しています（野心適合度{af.value*100:.0f}%）。"
+                f"このスコアは、同社が掲げる新規事業テーマ・中期経営計画の方向性と、"
+                f"研究者の専門領域との整合度を示しています。"
             )
         else:
             parts.append(
                 f"{company_name}は、新たな事業領域の開拓に"
-                f"取り組む姿勢を有価証券報告書で示しています。"
+                f"取り組む姿勢を有価証券報告書で示しています（野心適合度{af.value*100:.0f}%）。"
+                f"中期経営計画や事業戦略の記述から、既存事業の延長線上にない"
+                f"新たな価値創造への意欲が読み取れます。"
             )
+
+        # 2. How the researcher's expertise maps to the new domain
         if hum_role:
-            parts.append(
-                f"この新領域において、{hum_role}"
-            )
+            parts.append(f"この新領域において、{hum_role}")
         else:
             parts.append(
                 f"こうした新領域への参入にあたっては、"
                 f"研究者の専門的知見が問いの設定や方向性の検討に貢献できる可能性があります。"
+                f"企業が新領域に進出する際、最大の課題は「正しい問いを立てること」であり、"
+                f"これは学術研究者が最も得意とする領域です。"
             )
+
+        # 3. Humanities/social science value
+        if hf.value > 0.3:
+            parts.append(
+                f"さらに、人文・社会科学的な視点との親和性が高く（人文親和度{hf.value*100:.0f}%）、"
+                f"技術開発だけでは捉えきれない社会的文脈や利用者理解の側面で、"
+                f"研究者の知見が差別化要因となり得ます。"
+                f"Gibbonsら（1994）のMode 2知識生産論が示すように、"
+                f"社会的な問題関心に根ざした学際的アプローチは、"
+                f"新領域開拓において企業単独では得がたい視座を提供します。"
+                f"特に「なぜその事業が社会的に求められるのか」という"
+                f"正当性の構築において、人文・社会科学の知見は不可欠です。"
+            )
+        elif hf.value > 0.15:
+            parts.append(
+                f"人文・社会科学的な接点も一定程度確認されており（人文親和度{hf.value*100:.0f}%）、"
+                f"技術面だけでなく、社会的な文脈を踏まえた連携テーマの設計が可能です。"
+            )
+
+        # 4. OI readiness
         if oi.value > 0.4:
             parts.append(
-                f"同社はオープンイノベーション体制を整えており、"
+                f"同社はオープンイノベーション体制を整えており（OIスコア{oi.value*100:.0f}%）、"
                 f"外部の研究者との新領域探索に対して組織的な受容性が高いと考えられます。"
+                f"新規事業部門やイノベーション推進室がある企業では、"
+                f"従来の研究開発部門経由よりも迅速な連携が実現しやすいです。"
             )
+        elif oi.value > 0.2:
+            parts.append(
+                f"オープンイノベーションの体制は発展途上ですが（{oi.value*100:.0f}%）、"
+                f"新事業開発部門を窓口とした連携の可能性はあります。"
+            )
+
+        # 5. Future option value
+        if fo.value > 0.3:
+            parts.append(
+                f"将来的なオプション価値も高く（{fo.value*100:.0f}%）、"
+                f"短期的な成果だけでなく、中長期的な知的資産の蓄積という"
+                f"観点でも連携の意義が見込まれます。"
+            )
+
+        # 6. Expert recommendation
+        parts.append(
+            f"【産学連携の観点から】"
+            f"新領域探索型の産学連携では、共同研究よりも先に"
+            f"アドバイザリー契約や共同ワークショップを通じた"
+            f"「問いの共同設計」から始めることが効果的です。"
+            f"研究者が企業の事業開発チームに伴走し、"
+            f"学術的な知見を事業仮説の構築に活かすモデルが推奨されます。"
+            f"具体的には、3〜6ヶ月の探索フェーズで複数の仮説を検証し、"
+            f"有望なテーマに絞り込んだ上で本格的な共同研究に移行する"
+            f"ステージゲート方式が成功確率を高めます。"
+            f"経産省の「未来社会創造事業」やJSTの"
+            f"「共創の場形成支援プログラム」なども活用できる可能性があります。"
+        )
         return "".join(parts)
 
     else:  # exploratory
-        # Exploratory: theme breadth grouped by axis
         n_themes = len(cached_matching_themes)
         if n_themes > 0:
             by_axis: dict[str, list[str]] = {}
@@ -664,19 +837,68 @@ def _generate_exit_hypothesis(
                     by_axis.setdefault(axis_label, []).append(m["label"])
 
             parts = []
+            # 1. Multi-axis overview
             parts.append(
-                f"{company_name}とは、複数の分野にわたって対話の接点が見込まれます。"
+                f"{company_name}とは、{len(by_axis)}つの軸にわたって"
+                f"対話の接点が見込まれます（テーマ幅スコア{tb.value*100:.0f}%）。"
+                f"テーマ幅スコアは、研究テーマが企業の活動と"
+                f"どれだけ多様な接点を持つかを測る指標で、"
+                f"値が高いほど対話の糸口が豊富であることを示します。"
             )
-            topic_sentences = []
-            for axis_label, names in by_axis.items():
-                display_names = "「" + "」「".join(names[:2]) + "」"
-                topic_sentences.append(f"{axis_label}の観点では{display_names}")
-            if topic_sentences:
-                parts.append("、".join(topic_sentences) + "などのテーマが挙げられます。")
 
+            # 2. Detail each axis
+            for axis_label, names in by_axis.items():
+                display_names = "「" + "」「".join(names[:3]) + "」"
+                parts.append(
+                    f"{axis_label}の観点では{display_names}などのテーマが挙げられます。"
+                )
+
+            # 3. Cognitive distance argument
             parts.append(
-                f"まずは幅広い対話を通じて、"
-                f"具体的な連携テーマの発見を目指すことを推奨します。"
+                f"Nooteboom（2007）の認知的距離理論によれば、"
+                f"適度に異なる知識基盤を持つパートナー間の対話は、"
+                f"既存の枠組みでは生まれにくい新しい着想を促します。"
+                f"同社との連携は、技術的な近さよりもむしろ、"
+                f"異なる問題意識の交差によるセレンディピティが期待される関係です。"
+                f"産学連携の研究では、探索的な対話から始まった関係が、"
+                f"最も革新的な成果につながった事例が複数報告されています。"
+            )
+
+            # 4. Humanities fit
+            if hf.value > 0.3:
+                parts.append(
+                    f"人文・社会科学的なテーマへの関心も確認されており"
+                    f"（人文親和度{hf.value*100:.0f}%）、"
+                    f"技術者とは異なるレイヤーでの対話が可能です。"
+                    f"ESG経営やサステナビリティが経営課題となる中、"
+                    f"人文・社会科学の視点を持つ研究者との対話は"
+                    f"企業にとっても戦略的な意義があります。"
+                )
+            elif hf.value > 0.15:
+                parts.append(
+                    f"人文・社会科学的な接点も一定程度あり（人文親和度{hf.value*100:.0f}%）、"
+                    f"技術面に限定されない幅広い対話が見込まれます。"
+                )
+
+            # 5. OI readiness
+            if oi.value > 0.3:
+                parts.append(
+                    f"同社はオープンイノベーションへの取り組みも確認されており（{oi.value*100:.0f}%）、"
+                    f"外部との非定型な対話に対する受容性があると考えられます。"
+                )
+
+            # 6. Expert recommendation
+            parts.append(
+                f"【産学連携の観点から】"
+                f"探索的対話段階では、形式的な共同研究契約を結ぶ前に、"
+                f"まずカジュアルな意見交換やセミナー登壇・ワークショップの"
+                f"共同開催を通じて相互理解を深めることが効果的です。"
+                f"産学連携コーディネーターやURA（リサーチ・アドミニストレーター）を介した"
+                f"マッチングイベントの活用も推奨されます。"
+                f"この段階で重要なのは、双方が「何を知らないか」を共有することであり、"
+                f"そこから予想外の連携テーマが生まれるケースは少なくありません。"
+                f"大学のオープンイノベーション機構や、"
+                f"地域の産学連携支援機関を通じたファシリテーションも有効です。"
             )
             return "".join(parts)
         else:
@@ -684,6 +906,13 @@ def _generate_exit_hypothesis(
                 f"{company_name}とは、直接的なテーマの重なりは限られますが、"
                 f"異なる視点からの対話を通じて、新たな連携の接点が"
                 f"見つかる可能性があります。"
+                f"認知的に遠い分野間の対話がイノベーションの源泉となるケースは、"
+                f"産学連携の歴史において多く報告されています。"
+                f"まずは業界の課題感や将来ビジョンについて"
+                f"カジュアルな意見交換から始め、双方の関心の重なりを"
+                f"探索することを推奨します。"
+                f"産学連携コーディネーターやURAの仲介を通じた"
+                f"初期接点の設定が効果的です。"
             )
 
 
@@ -1027,8 +1256,10 @@ def run_multi_exit_match(seed: Seed, top_n: int | None = None) -> MultiExitMatch
 
         rankings = []
         for rank_idx, (total, co, features, matching_themes) in enumerate(top, 1):
+            # Top 3 get detailed hypothesis; rest get brief summary
             hypothesis = _generate_exit_hypothesis(
                 exit_type, co["name"], features, matching_themes,
+                brief=(rank_idx > 3),
             )
             rankings.append(RankedCompany(
                 rank=rank_idx,

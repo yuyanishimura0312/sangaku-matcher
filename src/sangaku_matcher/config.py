@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     w_synergy: float = 0.10         # Cross-dimensional synergy bonus
 
     # --- Matching ---
-    default_top_n: int = 3
+    default_top_n: int = 10
 
     # --- Web ---
     host: str = "127.0.0.1"
