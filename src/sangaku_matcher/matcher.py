@@ -577,6 +577,7 @@ def _generate_exit_hypothesis(
     brief: bool = False,
     company_text: dict | None = None,
     peers: list[dict] | None = None,
+    # NOTE: company_name is sanitized below via html.escape() before use in HTML
 ) -> str:
     """Generate an exit-specific hypothesis text for a company.
 
@@ -600,6 +601,8 @@ def _generate_exit_hypothesis(
     Returns:
         Human-readable hypothesis string in Japanese (HTML for detailed mode).
     """
+    import html as _html
+    company_name = _html.escape(company_name)  # Sanitize for XSS prevention
     company_text = company_text or {}
     peers = peers or []
     nf = features.get("need_fit", FeatureResult(0, ""))

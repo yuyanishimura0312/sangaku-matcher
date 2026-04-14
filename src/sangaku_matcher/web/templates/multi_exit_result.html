@@ -216,7 +216,10 @@ function generateDetail(btn) {
     form.append('seed_description', desc);
 
     fetch('/api/generate-detail', {method: 'POST', body: form})
-        .then(function(r) { return r.text(); })
+        .then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.text();
+        })
         .then(function(html) {
             container.innerHTML = '<div class="hypothesis-detail">' + html + '</div>';
         })
