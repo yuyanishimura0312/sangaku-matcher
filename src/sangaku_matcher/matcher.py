@@ -89,6 +89,37 @@ def _load_companies(conn) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def _load_company_texts(conn, edinet_codes: list[str]) -> dict[str, dict]:
+    """Load full text fields for specific companies (for top-ranked only).
+
+    Returns: {edinet_code: {rd_text, midterm_plan_text, ambitions_text, ...}}
+    """
+    if not edinet_codes:
+        return {}
+    placeholders = ",".join("?" * len(edinet_codes))
+    rows = conn.execute(
+        f"""SELECT edinet_code, rd_text, midterm_plan_text, estimated_needs,
+                   tech_needs_text, ambitions_text, humanities_needs_text,
+                   revenue, rd_expense, rd_intensity, employees, market_cap,
+                   open_inno_score, industry
+            FROM companies WHERE edinet_code IN ({placeholders})""",
+        edinet_codes,
+    ).fetchall()
+    return {r["edinet_code"]: dict(r) for r in rows}
+
+
+def _load_industry_peers(conn, industry: str, exclude_code: str) -> list[dict]:
+    """Load summary stats of same-industry peers for comparison."""
+    rows = conn.execute(
+        """SELECT name, revenue, rd_intensity, open_inno_score, rd_expense
+           FROM companies
+           WHERE industry = ? AND edinet_code != ? AND rd_intensity > 0
+           ORDER BY revenue DESC LIMIT 10""",
+        (industry, exclude_code),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def _load_industry_stats(conn) -> dict[str, tuple[float, float]]:
     rows = conn.execute("SELECT * FROM industry_stats").fetchall()
     return {r["industry"]: (r["mean_rd_int"], r["std_rd_int"]) for r in rows}
@@ -544,8 +575,17 @@ def _generate_exit_hypothesis(
     features: dict[str, FeatureResult],
     cached_matching_themes: list[dict],
     brief: bool = False,
+    company_text: dict | None = None,
+    peers: list[dict] | None = None,
 ) -> str:
     """Generate an exit-specific hypothesis text for a company.
+
+    Uses 5 internal specialist agents for top-ranked companies:
+    1. Technical Analyst — technology alignment and TRL assessment
+    2. Business Strategy Analyst — absorptive capacity, OI, ROI
+    3. Inflection Point Analyst — market timing and structural change
+    4. Collaboration Architect — contract design, IP, funding
+    5. Securities Report Analyst — company-specific insights vs peers
 
     Args:
         exit_type: One of "rd", "new_domain", "exploratory".
@@ -553,12 +593,15 @@ def _generate_exit_hypothesis(
         features: Scorer results keyed by scorer name.
         cached_matching_themes: Matching theme list captured during the initial
             score() call — avoids a redundant second score() invocation.
-        brief: If True, generate a short summary (~200 chars) for lower-ranked
-            companies. If False, generate a detailed hypothesis (~1000 chars).
+        brief: If True, generate a short summary for lower-ranked companies.
+        company_text: Full text fields from the securities report (top 3 only).
+        peers: Same-industry peer companies for comparison.
 
     Returns:
-        Human-readable hypothesis string in Japanese.
+        Human-readable hypothesis string in Japanese (HTML for detailed mode).
     """
+    company_text = company_text or {}
+    peers = peers or []
     nf = features.get("need_fit", FeatureResult(0, ""))
     tp = features.get("tech_prox", FeatureResult(0, ""))
     ac = features.get("abs_cap", FeatureResult(0, ""))
@@ -629,7 +672,7 @@ def _generate_exit_hypothesis(
                 return f"{'・'.join(axis_labels)}の{n_themes}テーマで接点。対話を通じた連携テーマの探索が見込まれる。"
             return f"テーマ幅{tb.value*100:.0f}%。異なる視点からの対話を通じた接点発見の余地あり。"
 
-    # ── Detailed mode: structured HTML with 4 expert agent perspectives ──
+    # ── Detailed mode: structured HTML with 5 expert agent perspectives ──
     # Helper: wrap a section with heading
     def _section(heading: str, body: str) -> str:
         return (
@@ -639,260 +682,479 @@ def _generate_exit_hypothesis(
             f'</div>'
         )
 
-    def _metric(val: str) -> str:
+    def _m(val: str) -> str:
+        """Highlight a metric value."""
         return f'<span class="hyp-metric">{val}</span>'
 
-    # ── Agent 1: Technical Analyst (技術分析) ──
-    def _agent_tech(exit_type: str) -> str:
+    # ── Extract useful text snippets from securities report ──
+    rd_text = company_text.get("rd_text", "") or ""
+    midterm = company_text.get("midterm_plan_text", "") or ""
+    ambitions_text = company_text.get("ambitions_text", "") or ""
+    ct_revenue = company_text.get("revenue", 0) or 0
+    ct_rd_exp = company_text.get("rd_expense", 0) or 0
+    ct_rd_int = company_text.get("rd_intensity", 0) or 0
+    ct_employees = company_text.get("employees", 0) or 0
+
+    # ── Agent 1: Technical Analyst ──
+    def _agent_tech() -> str:
+        """Assess technology alignment with TRL-aware reasoning."""
         tech_themes = _extract_tech_themes(nf.rationale) or _extract_tech_themes(tp.rationale)
         theme_names_a = _extract_theme_names(af.rationale)
+        sy = features.get("synergy", FeatureResult(0, ""))
 
         if exit_type == "rd":
             if tech_themes:
                 theme_str = "「" + "」「".join(tech_themes) + "」"
                 text = (
-                    f"{company_name}の有価証券報告書から、"
-                    f"{theme_str}の技術テーマで研究シーズとの高い親和性を検出しました"
-                    f"（ニーズ適合度{_metric(f'{nf.value*100:.0f}%')}、"
-                    f"技術近接度{_metric(f'{tp.value*100:.0f}%')}）。"
-                    f"これらは有報記載の研究開発方針と研究テーマの"
-                    f"意味的類似度を多言語埋め込みモデルで定量化した結果です。"
+                    f"{company_name}の有価証券報告書の研究開発方針を分析した結果、"
+                    f"{theme_str}の技術テーマで研究シーズとの高い親和性が確認されました"
+                    f"（ニーズ適合度{_m(f'{nf.value*100:.0f}%')}、"
+                    f"技術近接度{_m(f'{tp.value*100:.0f}%')}）。"
                 )
             else:
                 text = (
-                    f"{company_name}は、研究シーズと関連性の高い技術課題を抱えています"
-                    f"（ニーズ適合度{_metric(f'{nf.value*100:.0f}%')}、"
-                    f"技術近接度{_metric(f'{tp.value*100:.0f}%')}）。"
-                    f"有報の研究開発方針・事業リスクの記述との意味的近さを定量化した結果です。"
+                    f"{company_name}は、当該研究シーズと関連性の高い技術課題を抱えています"
+                    f"（ニーズ適合度{_m(f'{nf.value*100:.0f}%')}、"
+                    f"技術近接度{_m(f'{tp.value*100:.0f}%')}）。"
                 )
-            # Synergy interpretation
-            sy = features.get("synergy", FeatureResult(0, ""))
+            # TRL-based staging advice
+            if nf.value > 0.7:
+                text += (
+                    f"ニーズ適合度の高さは、企業側で既に課題が明確化されており、"
+                    f"研究成果の技術実証（TRL 4-6）から社会実装（TRL 7-9）への"
+                    f"橋渡しが比較的スムーズに進む可能性を示しています。"
+                )
+            elif nf.value > 0.4:
+                text += (
+                    f"基礎研究段階（TRL 1-3）の知見が、"
+                    f"企業側の応用開発と接続できる領域です。"
+                    f"共同研究を通じて技術の成熟度を高めていく段階にあります。"
+                )
+            # Synergy
             if sy.value > 0.3:
                 text += (
-                    f" さらに、技術ニーズと社会課題の交差領域で"
-                    f"シナジー効果（{_metric(f'{sy.value*100:.0f}%')}）が確認されており、"
-                    f"単一の技術課題を超えた複合的な研究価値が見込まれます。"
+                    f"技術ニーズと社会課題の交差領域でシナジー効果"
+                    f"（{_m(f'{sy.value*100:.0f}%')}）も確認されており、"
+                    f"複合的な研究価値が見込まれます。"
                 )
+            # Add R&D text insights
+            if rd_text and len(rd_text) > 50:
+                rd_keywords = []
+                if "AI" in rd_text or "機械学習" in rd_text:
+                    rd_keywords.append("AI・機械学習")
+                if "素材" in rd_text or "材料" in rd_text:
+                    rd_keywords.append("新素材・材料")
+                if "バイオ" in rd_text or "医薬" in rd_text:
+                    rd_keywords.append("バイオ・医薬")
+                if "環境" in rd_text or "エネルギー" in rd_text:
+                    rd_keywords.append("環境・エネルギー")
+                if "半導体" in rd_text or "電子" in rd_text:
+                    rd_keywords.append("半導体・電子")
+                if "ロボット" in rd_text or "自動化" in rd_text:
+                    rd_keywords.append("ロボティクス・自動化")
+                if rd_keywords:
+                    text += (
+                        f"同社の研究開発活動は"
+                        f"{'、'.join(rd_keywords[:3])}の領域を中心に展開されており、"
+                        f"研究テーマとの技術的な補完関係が期待されます。"
+                    )
         elif exit_type == "new_domain":
             if theme_names_a:
                 theme_str = "「" + "」「".join(theme_names_a) + "」"
                 text = (
-                    f"{company_name}は{theme_str}等の新事業領域への挑戦を"
-                    f"有価証券報告書で明示しています"
-                    f"（野心適合度{_metric(f'{af.value*100:.0f}%')}）。"
-                    f"このスコアは中期経営計画の方向性と"
-                    f"研究者の専門領域との整合度を示しています。"
+                    f"{company_name}は{theme_str}等の"
+                    f"新事業領域への挑戦を有価証券報告書で明示しています"
+                    f"（野心適合度{_m(f'{af.value*100:.0f}%')}）。"
+                    f"新領域での技術基盤はまだ発展途上（TRL 1-3相当）であり、"
+                    f"研究者の知見が問いの設定段階から貢献できる余地が大きい領域です。"
                 )
             else:
                 text = (
-                    f"{company_name}は新規事業領域の開拓を推進しています"
-                    f"（野心適合度{_metric(f'{af.value*100:.0f}%')}）。"
-                    f"中期経営計画から既存事業の延長にない"
-                    f"新たな価値創造への意欲が読み取れます。"
+                    f"{company_name}は新規事業領域の開拓に注力しています"
+                    f"（野心適合度{_m(f'{af.value*100:.0f}%')}）。"
+                    f"既存の技術資産とは異なる知識基盤が必要な段階であり、"
+                    f"学術研究者との連携が技術的な探索の幅を広げます。"
                 )
             if hf.value > 0.2:
                 text += (
-                    f" 人文・社会科学との親和性も{_metric(f'{hf.value*100:.0f}%')}と高く、"
-                    f"Mode 2知識生産（Gibbons, 1994）の枠組みで、"
-                    f"社会的問題関心に根ざした学際的アプローチが可能です。"
-                    f"「なぜその事業が社会に必要か」の正当性構築に研究知見が貢献します。"
+                    f"人文・社会科学との親和性（{_m(f'{hf.value*100:.0f}%')}）も高く、"
+                    f"「なぜその事業が社会に必要か」という問いの構築に、"
+                    f"研究者の視点が差別化要因となります。"
                 )
         else:  # exploratory
             by_ax: dict[str, list[str]] = {}
-            for m in cached_matching_themes[:10]:
-                al = {"humanities": "社会課題", "tech": "技術", "ambition": "新規事業"}.get(m.get("axis", ""), "")
+            for m_t in cached_matching_themes[:10]:
+                al = {"humanities": "社会課題", "tech": "技術", "ambition": "新規事業"}.get(m_t.get("axis", ""), "")
                 if al:
-                    by_ax.setdefault(al, []).append(m["label"])
+                    by_ax.setdefault(al, []).append(m_t["label"])
             text = (
-                f"{company_name}とは{_metric(f'{len(by_ax)}軸')}にわたる"
-                f"対話の接点が見込まれます"
-                f"（テーマ幅{_metric(f'{tb.value*100:.0f}%')}）。"
+                f"{company_name}とは{_m(f'{len(by_ax)}つの軸')}にわたる"
+                f"対話の接点が見込まれます（テーマ幅{_m(f'{tb.value*100:.0f}%')}）。"
             )
             for al, ns in by_ax.items():
                 dn = "「" + "」「".join(ns[:2]) + "」"
                 text += f"{al}では{dn}、"
             text += (
-                f"などのテーマが挙げられます。"
-                f"テーマ幅スコアは、研究テーマと企業活動の接点の多様さを示し、"
-                f"対話の糸口が豊富であることを意味します。"
+                f"などのテーマが接点となります。"
+                f"技術的な距離がある分野間の対話は、既存の枠組みでは"
+                f"生まれにくい新しい着想の源泉となります。"
             )
             if hf.value > 0.2:
                 text += (
-                    f" 人文・社会科学の接点（{_metric(f'{hf.value*100:.0f}%')}）も確認されており、"
-                    f"技術者とは異なるレイヤーでの対話が可能です。"
+                    f"人文・社会科学の接点（{_m(f'{hf.value*100:.0f}%')}）も確認されており、"
+                    f"技術者とは異なる視座での対話が可能です。"
                 )
         return text
 
-    # ── Agent 2: Business Strategy Analyst (経営戦略分析) ──
-    def _agent_biz(exit_type: str) -> str:
+    # ── Agent 2: Business Strategy Analyst ──
+    def _agent_biz() -> str:
+        """Evaluate collaboration value from management perspective."""
         parts = []
-        # Absorptive capacity
+
+        # Company scale context
+        if ct_revenue > 0:
+            rev_oku = ct_revenue / 1_000_000
+            if ct_rd_exp > 0:
+                rd_oku = ct_rd_exp / 1_000_000
+                parts.append(
+                    f"売上高{_m(f'{rev_oku:,.0f}百万円')}に対して"
+                    f"研究開発費{_m(f'{rd_oku:,.0f}百万円')}"
+                    f"（研究開発比率{_m(f'{ct_rd_int*100:.1f}%')}）を投じており、"
+                )
+            else:
+                parts.append(f"売上高{_m(f'{rev_oku:,.0f}百万円')}の企業であり、")
+
+        # Absorptive capacity — plain language
         if ac.value > 0.5 and pt.value > 0.2:
             parts.append(
-                f"R&D投資水準が高く（吸収力{_metric(f'{ac.value*100:.0f}%')}）、"
-                f"大学との共同研究実績もあり、外部知識の吸収・活用能力"
-                f"（Cohen & Levinthal, 1990）が整っています。"
-                f"研究成果の事業化確度が高い企業です。"
+                f"外部の研究知見を取り込み事業に活かす力（吸収力{_m(f'{ac.value*100:.0f}%')}）が高く、"
+                f"大学との共同研究実績もあります。"
+                f"研究成果が実際の製品・サービスに結びつく確度が高い企業です。"
             )
         elif ac.value > 0.5:
             parts.append(
-                f"R&D投資が活発で（吸収力{_metric(f'{ac.value*100:.0f}%')}）、"
-                f"外部知見の事業化体制を持っています。"
-                f"大学連携は限定的なため、TLOを介した段階的アプローチが有効です。"
+                f"研究開発への投資が活発で（吸収力{_m(f'{ac.value*100:.0f}%')}）、"
+                f"外部の研究成果を事業に取り込む体制があります。"
+                f"大学との連携経験は限られるため、段階的なアプローチが効果的です。"
             )
         elif pt.value > 0.2:
             parts.append(
-                f"大学連携の実績があり（{_metric(f'past_ties {pt.value*100:.0f}%')}）、"
-                f"契約プロセスや知財手続きが整備済みの可能性が高いです。"
-                f"R&D規模（{ac.value*100:.0f}%）からスコープの事前確認を推奨します。"
+                f"大学との連携実績があり、共同研究の進め方に慣れた企業です。"
+                f"契約や知財の社内手続きが整備されている可能性が高く、"
+                f"スムーズな連携開始が期待できます。"
             )
         else:
             parts.append(
-                f"R&D投資（{_metric(f'{ac.value*100:.0f}%')}）は中程度ですが、"
-                f"テーマ適合度の高さが連携の動機づけになります。"
-                f"初期は受託研究など軽いスキームから関係構築するのが効果的です。"
+                f"研究開発投資は中程度（吸収力{_m(f'{ac.value*100:.0f}%')}）ですが、"
+                f"テーマの適合度の高さが連携の動機づけとなります。"
+                f"まず技術コンサルティングなど軽い形から関係構築するのが効果的です。"
             )
 
-        # OI readiness
+        # OI体制
         if oi.value > 0.4:
             parts.append(
-                f"OI体制が充実しており（{_metric(f'{oi.value*100:.0f}%')}）、"
-                f"CVC・アクセラレーター等を通じた外部協業の受容性が高いです。"
+                f"外部連携への積極性（OI度{_m(f'{oi.value*100:.0f}%')}）も高く、"
+                f"社外との協業を推進する組織体制が整っています。"
             )
         elif oi.value > 0.2:
             parts.append(
-                f"OIへの取り組みも確認されています（{_metric(f'{oi.value*100:.0f}%')}）。"
+                f"外部連携への取り組み（OI度{_m(f'{oi.value*100:.0f}%')}）も確認されています。"
             )
 
-        # Mode 2 / humanities (for new_domain and exploratory)
+        # ESG / social value for non-rd exits
         if exit_type != "rd" and hf.value > 0.3:
             parts.append(
-                f"Gibbons（1994）のMode 2知識生産論の観点から、"
-                f"社会的文脈に根ざした学際的知見が事業の正当性構築に貢献します。"
+                f"ESG経営やサステナビリティが重要課題となる中、"
+                f"社会科学的な視点を持つ研究者との連携は、"
+                f"事業の社会的正当性を裏づける戦略的投資と位置づけられます。"
             )
 
         # Future option
         if fo.value > 0.3 and exit_type != "rd":
             parts.append(
-                f"将来的なオプション価値（{_metric(f'{fo.value*100:.0f}%')}）も高く、"
-                f"中長期の知的資産蓄積の観点でも連携意義があります。"
+                f"将来に向けた選択肢の価値（{_m(f'{fo.value*100:.0f}%')}）も高く、"
+                f"中長期的な知的資産として連携の意義があります。"
             )
+
+        # Strategic direction from midterm plan
+        if midterm and len(midterm) > 200:
+            strategic_dirs = []
+            if "成長" in midterm[:3000] and "投資" in midterm[:3000]:
+                strategic_dirs.append("成長投資の拡大")
+            if "イノベーション" in midterm[:3000]:
+                strategic_dirs.append("イノベーション推進")
+            if "社会" in midterm[:2000] and "課題" in midterm[:2000]:
+                strategic_dirs.append("社会課題への取り組み")
+            if strategic_dirs:
+                parts.append(
+                    f"経営計画では{'・'.join(strategic_dirs)}が打ち出されており、"
+                    f"産学連携を通じた外部知見の獲得は"
+                    f"この経営方針とも整合します。"
+                )
 
         return "".join(parts)
 
-    # ── Agent 3: Inflection Point Analyst (変化点分析) ──
-    def _agent_inflection(exit_type: str) -> str:
-        """Assess structural change dynamics around the collaboration domain.
+    # ── Agent 3: Inflection Point Analyst (平易な言葉で) ──
+    def _agent_inflection() -> str:
+        """Assess market timing using structural change concepts in plain language."""
+        # Detect strategic keywords from midterm plan for context
+        has_dx = midterm and ("DX" in midterm or "デジタル" in midterm)
+        has_green = midterm and ("カーボン" in midterm or "脱炭素" in midterm or "環境" in midterm)
+        has_global = midterm and ("グローバル" in midterm or "海外" in midterm[:2000])
 
-        Uses concepts from the Structural Inflection Scorer:
-        Scheffer (tipping points), Geels (MLP), Perez (tech revolutions),
-        North (institutional economics), Dixit-Pindyck (real options).
-        """
-        parts = []
-        # Approximate inflection signals from available feature scores
-        # High future_option + high ambition_fit = landscape pressure / regime instability
-        # High open_inno = institutional readiness
-        # High need_fit + high tech_prox = technology deployment phase
+        context_hints = []
+        if has_dx:
+            context_hints.append("デジタル変革の加速")
+        if has_green:
+            context_hints.append("脱炭素への転換")
+        if has_global:
+            context_hints.append("グローバル市場の構造変化")
+        context_str = "・".join(context_hints) if context_hints else ""
 
         if exit_type == "rd":
             if nf.value > 0.7 and oi.value > 0.3:
-                parts.append(
-                    f"技術ニーズの高さとOI体制から、Geelsの多層的視座（MLP）における"
-                    f"「レジーム不安定化→ニッチ技術の浸透機会」が開いている状態と推察されます。"
-                    f"Perez理論でいう導入期から展開期への移行局面であれば、"
-                    f"産学連携による技術実装の効果が最大化するタイミングです。"
+                text = (
+                    f"この技術領域では、従来のやり方に限界が見え始め、"
+                    f"新しいアプローチへの切り替えが進みつつある局面です。"
+                    f"企業側の技術ニーズが明確で、かつ外部連携への体制が整っていることから、"
+                    f"研究成果を実用化に結びつけるのに最も効果的なタイミングと言えます。"
+                    f"このような「転換期」に産学連携で参入することで、"
+                    f"新技術の標準化や市場形成の初期段階から関与できます。"
                 )
             elif nf.value > 0.5:
-                parts.append(
-                    f"技術ニーズとの適合度から、当該領域は"
-                    f"既存技術の限界が顕在化しつつある段階（Scheffer理論の閾値接近）"
-                    f"と推察されます。代替技術への需要が高まる中、"
-                    f"研究シーズの事業化ウィンドウが開きつつあります。"
+                text = (
+                    f"既存技術の限界が業界内で認識され始めている段階です。"
+                    f"まだ代替技術が確立されていないため、"
+                    f"研究シーズが市場に受け入れられる「機会の窓」が開きつつあります。"
+                    f"今のうちに企業との関係を構築しておくことで、"
+                    f"本格的な技術転換が起きた際に先行者優位を確保できます。"
                 )
             else:
-                parts.append(
-                    f"現時点では技術的な変化の閾値には距離がありますが、"
-                    f"Dixit-Pindyck理論の「待機オプション」として捉えれば、"
-                    f"今から関係構築を始めることで将来の変化点到来時に"
-                    f"先行者優位を確保できます。"
+                text = (
+                    f"この領域の技術変化はまだ緩やかな段階にあります。"
+                    f"今すぐの事業化は難しいかもしれませんが、"
+                    f"将来の大きな変化に備えた「種まき」としての関係構築は有効です。"
+                    f"産学連携は成果が出るまでに時間がかかるため、"
+                    f"変化が本格化する前に始めることが戦略的に重要です。"
                 )
+            if context_str:
+                text += (
+                    f"同社の経営計画からは{context_str}といった"
+                    f"大きな変化への対応が読み取れ、これらの流れが"
+                    f"研究テーマとの連携機会をさらに後押しする可能性があります。"
+                )
+            return text
         elif exit_type == "new_domain":
             if af.value > 0.5 and fo.value > 0.3:
-                parts.append(
-                    f"企業の新領域参入意欲と将来オプション価値の高さは、"
-                    f"Geels理論における「ランドスケープ圧力による機会の窓」が"
-                    f"開いていることを示唆します。"
-                    f"North制度経済学の視点では、規制変更や基準策定が"
-                    f"新市場を創出する局面であり、連携のタイミングとして有望です。"
+                text = (
+                    f"この新領域では、規制の変化や社会的ニーズの高まりなど、"
+                    f"市場が大きく動き始める兆候が見られます。"
+                    f"企業が積極的に参入を検討しているこのタイミングは、"
+                    f"研究者が「どんな問いを立てるべきか」という"
+                    f"最も上流の段階から関与できる貴重な機会です。"
+                    f"新市場のルール形成に研究知見が影響を与えられる可能性があります。"
                 )
             else:
-                parts.append(
-                    f"新事業領域はPerez理論の導入期にあると考えられ、"
-                    f"不確実性は高いものの、この段階での学術連携は"
-                    f"「問いの設定」段階から関与できる戦略的優位があります。"
-                    f"Dixit-Pindyck理論では不確実性が高い領域こそ"
-                    f"リアルオプションの価値が大きくなります。"
+                text = (
+                    f"新事業領域はまだ黎明期にあり、不確実性が高い段階です。"
+                    f"しかし、不確実な時期だからこそ、"
+                    f"学術研究者の「問いを立てる力」が最も活きる局面です。"
+                    f"この段階から関わることで、研究テーマと事業方向性を"
+                    f"同時に設計できるという、後からでは得られない戦略的優位があります。"
                 )
+            if context_str:
+                text += (
+                    f"同社は{context_str}を経営の方向性として掲げており、"
+                    f"こうした構造的な変化が新領域での連携に追い風となります。"
+                )
+            return text
         else:  # exploratory
             if tb.value > 0.4 and hf.value > 0.2:
-                parts.append(
-                    f"多軸にわたる接点の存在は、Scheffer理論が示す"
-                    f"「複数の緩慢変数が同時に閾値に接近する」複合的変化の兆候と"
-                    f"解釈できます。Nooteboom（2007）の認知的距離理論によれば、"
-                    f"適度に異なる知識基盤間の対話が"
-                    f"最もイノベーティブな成果を生み出します。"
+                text = (
+                    f"複数の分野にわたるテーマの接点は、"
+                    f"いくつもの変化が同時に進行している兆候です。"
+                    f"技術・社会・市場の変化が重なり合う領域では、"
+                    f"異なる分野間の対話から予想外の発見が生まれやすくなります。"
+                    f"こうした「変化の交差点」こそ、探索的な産学対話の"
+                    f"最も大きなリターンが期待できる場です。"
                 )
             else:
-                parts.append(
-                    f"探索的段階にある領域は、Perez理論の導入期に相当し、"
-                    f"将来の変化点を先取りするための知的投資と位置づけられます。"
-                    f"Nooteboomの認知的距離理論では、異なる問題意識の交差が"
-                    f"セレンディピティの源泉となります。"
+                text = (
+                    f"現時点では明確な変化の兆候は限定的ですが、"
+                    f"産業構造の変化は徐々に進行するものです。"
+                    f"早い段階で異分野との対話チャネルを持っておくことは、"
+                    f"将来の変化をいち早く察知し、機会を掴むための"
+                    f"「知的アンテナ」として機能します。"
                 )
-        return "".join(parts)
+            if context_str:
+                text += (
+                    f"同社の事業環境では{context_str}が進行しており、"
+                    f"これらの変化が新たな対話テーマを生み出す可能性があります。"
+                )
+            return text
 
-    # ── Agent 4: Collaboration Architect (連携設計) ──
-    def _agent_collab(exit_type: str) -> str:
+    # ── Agent 4: Collaboration Architect ──
+    def _agent_collab() -> str:
+        """Design concrete collaboration approach with IP and funding guidance."""
         if exit_type == "rd":
             text = (
-                f"NDA締結後の技術ディスカッション（3〜6ヶ月）を経て"
-                f"共同研究契約へ移行するのが標準的です。"
-                f"知財は大学の知財ポリシーと企業側の秘密保持要件を"
-                f"早期に擦り合わせてください。"
-                f"資金面ではNEDO・JST等のマッチングファンド、"
-                f"特にA-STEPや産学共創プラットフォームの活用を推奨します。"
+                f"推奨する連携プロセスは以下の通りです。"
+                f"まず秘密保持契約（NDA）を締結し、3〜6ヶ月の技術ディスカッションで"
+                f"共同研究のテーマと範囲を具体化します。"
+                f"その後、共同研究契約に移行し、通常1〜3年の研究期間を設定します。"
+                f"知的財産は、基盤技術は大学帰属・応用技術は企業への"
+                f"実施許諾（ライセンス）が一般的ですが、"
+                f"共同発明の取り扱いは契約前に明確化してください。"
+            )
+            if ac.value > 0.5:
+                text += (
+                    f"研究開発体制の充実した企業であるため、"
+                    f"企業側からの研究者受入や設備共用など、"
+                    f"実践的な共同研究体制の構築も検討できます。"
+                )
+            text += (
+                f"資金面では、JSTのA-STEP（研究成果展開事業）や"
+                f"産学共創プラットフォームが活用できます。"
+                f"また、NEDOの技術開発プロジェクトへの共同提案も有効です。"
             )
             if nf.value > 0.7:
                 text += (
-                    f" ニーズ適合度の高さから、共著論文・共同特許・"
+                    f"ニーズ適合度の高さから、共著論文・共同特許・"
                     f"プロトタイプ開発など実用化直結型の成果が期待されます。"
                 )
+            text += (
+                f"留意点として、研究者側の学術的関心と企業側の事業課題の間に"
+                f"時間軸や優先度のズレが生じやすいため、"
+                f"キックオフ時に双方の期待値と成果指標を明文化してください。"
+                f"四半期ごとの進捗レビューを設定し、テーマの軌道修正を"
+                f"柔軟に行える体制が連携成功の鍵です。"
+            )
         elif exit_type == "new_domain":
             text = (
-                f"共同研究よりも先に、アドバイザリー契約や"
-                f"共同ワークショップによる「問いの共同設計」から始めてください。"
-                f"3〜6ヶ月の探索フェーズ→ステージゲートで本格研究へ移行する"
-                f"方式が成功確率を高めます。"
+                f"新領域探索では、いきなり共同研究契約を結ぶより、"
+                f"まずアドバイザリー契約（月1〜2回の助言）や"
+                f"共同ワークショップで「問いの共同設計」から始めるのが効果的です。"
+                f"3〜6ヶ月の探索フェーズで複数の仮説を検証し、"
+                f"有望テーマに絞り込んでから本格的な共同研究へ移行する"
+                f"段階的アプローチ（ステージゲート方式）が成功確率を高めます。"
+                f"知的財産は、探索段階では共同所有とし、"
+                f"事業化段階で企業への独占ライセンスに切り替えるのが一般的です。"
                 f"JSTの「共創の場形成支援プログラム」や"
-                f"経産省の関連事業も活用できる可能性があります。"
+                f"経産省の関連事業（未来社会創造事業等）の活用も検討してください。"
             )
-        else:
+        else:  # exploratory
             text = (
-                f"まずセミナー登壇・ワークショップの共同開催など"
-                f"カジュアルな接点から開始してください。"
+                f"探索的対話段階では、契約関係の前に"
+                f"カジュアルな接点づくりから始めることを推奨します。"
+                f"具体的には、セミナーへの相互登壇、"
+                f"ワークショップの共同開催、研究室訪問・工場見学の相互実施などです。"
                 f"URA（リサーチ・アドミニストレーター）や"
-                f"産学連携コーディネーターを介したマッチングイベントも有効です。"
-                f"双方が「何を知らないか」を共有することで、"
-                f"予想外の連携テーマが生まれるケースは少なくありません。"
+                f"産学連携コーディネーターによるマッチングイベントも有効です。"
+                f"この段階では知財の心配は不要ですが、"
+                f"公開情報の範囲内で対話することを事前に合意してください。"
+                f"相互理解が深まった段階で、NDAを締結し、"
+                f"具体的な共同研究テーマの検討に移行します。"
+                f"大学のオープンイノベーション機構を通じた"
+                f"初期接点の設定も効果的です。"
             )
         return text
 
+    # ── Agent 5: Securities Report Analyst (有報分析) ──
+    def _agent_yuho() -> str:
+        """Analyze company-specific characteristics from securities report texts,
+        comparing with industry peers to highlight what's distinctive."""
+        parts = []
+
+        # Use midterm plan text to extract key strategy keywords
+        if midterm and len(midterm) > 100:
+            # Extract notable short phrases (first 500 chars of midterm plan)
+            plan_excerpt = midterm[:500].replace("\n", " ").strip()
+            parts.append(
+                f"中期経営計画の分析から、同社は"
+            )
+            # Extract key strategic direction from text
+            if "DX" in midterm or "デジタル" in midterm:
+                parts.append(f"デジタル変革（DX）を重点戦略に掲げており、")
+            if "カーボンニュートラル" in midterm or "脱炭素" in midterm:
+                parts.append(f"脱炭素・カーボンニュートラルに注力しており、")
+            if "グローバル" in midterm or "海外" in midterm[:2000]:
+                parts.append(f"グローバル展開を推進しており、")
+            if "M&A" in midterm or "買収" in midterm:
+                parts.append(f"M&Aによる事業領域拡大を進めており、")
+            if "人的資本" in midterm or "人材" in midterm[:1000]:
+                parts.append(f"人的資本経営を重視しており、")
+            parts.append(
+                f"これらの経営方針と研究テーマの接点が連携の起点となります。"
+            )
+
+        # R&D text analysis
+        if rd_text and len(rd_text) > 50:
+            parts.append(
+                f"研究開発の記述（{_m(f'{len(rd_text):,}文字')}）からは、"
+            )
+            if "AI" in rd_text or "機械学習" in rd_text or "人工知能" in rd_text:
+                parts.append(f"AI・機械学習技術の研究開発、")
+            if "素材" in rd_text or "材料" in rd_text:
+                parts.append(f"新素材・材料技術の開発、")
+            if "バイオ" in rd_text or "医薬" in rd_text or "ヘルスケア" in rd_text:
+                parts.append(f"バイオ・医薬・ヘルスケア領域の研究、")
+            if "環境" in rd_text or "エネルギー" in rd_text:
+                parts.append(f"環境・エネルギー技術の開発、")
+            parts.append(f"などの取り組みが確認されています。")
+
+        # Peer comparison
+        if peers:
+            peer_rd_ints = [p["rd_intensity"] for p in peers if p.get("rd_intensity")]
+            if peer_rd_ints and ct_rd_int > 0:
+                avg_rd_int = sum(peer_rd_ints) / len(peer_rd_ints)
+                if ct_rd_int > avg_rd_int * 1.3:
+                    parts.append(
+                        f"同業他社（{len(peers)}社）との比較では、"
+                        f"研究開発比率が業界平均{_m(f'{avg_rd_int*100:.1f}%')}を"
+                        f"大きく上回る{_m(f'{ct_rd_int*100:.1f}%')}であり、"
+                        f"技術投資に積極的な企業として際立っています。"
+                    )
+                elif ct_rd_int > avg_rd_int * 0.8:
+                    parts.append(
+                        f"同業他社との比較では、研究開発比率"
+                        f"（{_m(f'{ct_rd_int*100:.1f}%')} vs "
+                        f"業界平均{_m(f'{avg_rd_int*100:.1f}%')}）は同水準であり、"
+                        f"業界標準レベルの研究投資を行っています。"
+                    )
+                else:
+                    parts.append(
+                        f"研究開発比率は業界平均（{_m(f'{avg_rd_int*100:.1f}%')}）を"
+                        f"下回る{_m(f'{ct_rd_int*100:.1f}%')}ですが、"
+                        f"事業規模を活かした応用開発力に強みがある可能性があります。"
+                    )
+
+            # OI comparison
+            peer_ois = [p["open_inno_score"] for p in peers if p.get("open_inno_score")]
+            if peer_ois:
+                avg_oi = sum(peer_ois) / len(peer_ois)
+                co_oi = company_text.get("open_inno_score", 0) or 0
+                if co_oi > avg_oi * 1.3 and co_oi > 0.3:
+                    parts.append(
+                        f"外部連携への積極性も業界内で突出しており、"
+                        f"産学連携の受け皿として優位な位置にあります。"
+                    )
+
+        if not parts:
+            # Fallback when no text data available
+            parts.append(
+                f"{company_name}の有価証券報告書の分析に基づく評価です。"
+                f"企業の個別戦略の詳細は、面談時に直接確認することを推奨します。"
+            )
+
+        return "".join(parts)
+
     # ── Assemble structured HTML ──
     sections = [
-        _section("技術分析", _agent_tech(exit_type)),
-        _section("経営戦略分析", _agent_biz(exit_type)),
-        _section("変化点分析", _agent_inflection(exit_type)),
-        _section("連携設計", _agent_collab(exit_type)),
+        _section("技術分析", _agent_tech()),
+        _section("経営戦略分析", _agent_biz()),
+        _section("変化点分析", _agent_inflection()),
+        _section("連携設計", _agent_collab()),
+        _section("有報からの企業特徴", _agent_yuho()),
     ]
     return "\n".join(sections)
 
@@ -1235,12 +1497,26 @@ def run_multi_exit_match(seed: Seed, top_n: int | None = None) -> MultiExitMatch
         else:
             top = exit_scored[:top_n]
 
+        # Load full text data for top 3 companies in this exit
+        top3_codes = [co["edinet_code"] for _, co, _, _ in top[:3]]
+        with connect(settings.matcher_db_path) as text_conn:
+            company_texts = _load_company_texts(text_conn, top3_codes)
+            # Load industry peer data for comparison
+            industry_peers: dict[str, list[dict]] = {}
+            for code in top3_codes:
+                ct = company_texts.get(code, {})
+                if ct.get("industry"):
+                    industry_peers[code] = _load_industry_peers(
+                        text_conn, ct["industry"], code)
+
         rankings = []
         for rank_idx, (total, co, features, matching_themes) in enumerate(top, 1):
             # Top 3 get detailed hypothesis; rest get brief summary
             hypothesis = _generate_exit_hypothesis(
                 exit_type, co["name"], features, matching_themes,
                 brief=(rank_idx > 3),
+                company_text=company_texts.get(co["edinet_code"], {}),
+                peers=industry_peers.get(co["edinet_code"], []),
             )
             rankings.append(RankedCompany(
                 rank=rank_idx,
