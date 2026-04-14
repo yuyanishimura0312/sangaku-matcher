@@ -44,7 +44,10 @@ COPY data/exit_weights.json data/exit_weights.json
 # ── Source code layer (only this invalidates on code changes) ──
 COPY pyproject.toml .
 COPY src/ src/
-RUN pip install --no-cache-dir --no-deps . && rm -rf /root/.cache
+RUN pip install --no-cache-dir --no-deps . && \
+    SITE_PKG=$(python -c "import sangaku_matcher; import os; print(os.path.dirname(sangaku_matcher.__file__))") && \
+    cp -r src/sangaku_matcher/* "$SITE_PKG/" && \
+    rm -rf /root/.cache
 
 # Use ONNX backend with quantized local model
 ENV USE_ONNX=1
