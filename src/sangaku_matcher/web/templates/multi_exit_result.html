@@ -136,11 +136,57 @@
 </div>
 {% endfor %}
 
-<a href="/" class="btn btn-primary mt-2 mb-4" style="width:100%">新しいテーマで分析</a>
+<div style="display:flex;gap:0.75rem;margin-top:0.5rem;margin-bottom:2rem">
+    <a href="/" class="btn btn-primary" style="flex:1">新しいテーマで分析</a>
+    <button onclick="window.print()" class="btn btn-outline-secondary no-print" style="flex:0 0 auto;padding:0.55rem 1.25rem">PDF出力</button>
+</div>
 
 <style>
 .collapsed { display: none; }
 .chevron, .more-chevron { display: inline-block; }
 .chevron.rotated, .more-chevron.rotated { transform: rotate(-90deg); }
+
+/* ===== Print / PDF styles ===== */
+@media print {
+    /* Hide navigation, footer, buttons */
+    .site-nav, .site-footer, .no-print, button, .btn { display: none !important; }
+
+    /* Show all collapsed sections */
+    .collapsed { display: block !important; }
+    .chevron, .more-chevron { display: none !important; }
+
+    /* Page layout */
+    body { font-size: 10pt; line-height: 1.6; color: #000; background: #fff; }
+    .main-container { max-width: 100%; padding: 0; margin: 0; }
+
+    /* Report header */
+    h2 { font-size: 14pt; margin-bottom: 0.5rem; }
+
+    /* Cards */
+    .card { break-inside: avoid; border: 1px solid #ccc; box-shadow: none; margin-bottom: 0.75rem; }
+    .card-header { background: #f5f5f5 !important; color: #000 !important; cursor: default; }
+
+    /* Hypothesis sections */
+    .hypothesis-detail { background: #fafafa !important; padding: 0.75rem; font-size: 9pt; line-height: 1.7; }
+    .hypothesis-detail .hyp-section { break-inside: avoid; }
+    .hypothesis-detail .hyp-heading { color: #333; border-bottom-color: #ccc; }
+    .hypothesis-detail .hyp-metric { color: #333; font-weight: 700; }
+
+    /* Score bars: show text only */
+    .score-bar, .score-bar-fill { display: none; }
+
+    /* Page breaks between exit types */
+    .card.mb-4 { break-before: auto; }
+
+    /* Print-specific title */
+    .print-title { display: block !important; text-align: center; font-size: 16pt; font-weight: 700; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid #333; }
+}
+
+.print-title { display: none; }
 </style>
+
+{# Print-only report title #}
+<div class="print-title">
+    sangaku-matcher 連携候補分析レポート
+</div>
 {% endblock %}
