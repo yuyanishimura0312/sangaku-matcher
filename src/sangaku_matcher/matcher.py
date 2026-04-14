@@ -811,18 +811,19 @@ def _generate_exit_hypothesis(
         """Evaluate collaboration value from management perspective."""
         parts = []
 
-        # Company scale context
-        if ct_revenue > 0:
-            rev_oku = ct_revenue / 1_000_000
-            if ct_rd_exp > 0:
-                rd_oku = ct_rd_exp / 1_000_000
-                parts.append(
-                    f"売上高{_m(f'{rev_oku:,.0f}百万円')}に対して"
-                    f"研究開発費{_m(f'{rd_oku:,.0f}百万円')}"
-                    f"（研究開発比率{_m(f'{ct_rd_int*100:.1f}%')}）を投じており、"
-                )
-            else:
-                parts.append(f"売上高{_m(f'{rev_oku:,.0f}百万円')}の企業であり、")
+        # R&D intensity context (use ratio, not raw amounts which may have uncertain units)
+        if ct_rd_int > 0.1:
+            parts.append(
+                f"研究開発比率{_m(f'{ct_rd_int*100:.1f}%')}と高い水準の技術投資を行っており、"
+            )
+        elif ct_rd_int > 0.03:
+            parts.append(
+                f"研究開発比率{_m(f'{ct_rd_int*100:.1f}%')}の技術投資を行っており、"
+            )
+        elif ct_rd_int > 0:
+            parts.append(
+                f"研究開発比率は{_m(f'{ct_rd_int*100:.1f}%')}ですが、"
+            )
 
         # Absorptive capacity — plain language
         if ac.value > 0.5 and pt.value > 0.2:
