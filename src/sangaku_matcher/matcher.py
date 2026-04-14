@@ -895,104 +895,162 @@ def _generate_exit_hypothesis(
 
         return "".join(parts)
 
-    # ── Agent 3: Inflection Point Analyst (平易な言葉で) ──
+    # ── Agent 3: Inflection Point Analyst (企業固有の変化点を具体的に記述) ──
     def _agent_inflection() -> str:
-        """Assess market timing using structural change concepts in plain language."""
-        # Detect strategic keywords from midterm plan for context
-        has_dx = midterm and ("DX" in midterm or "デジタル" in midterm)
-        has_green = midterm and ("カーボン" in midterm or "脱炭素" in midterm or "環境" in midterm)
-        has_global = midterm and ("グローバル" in midterm or "海外" in midterm[:2000])
+        """Assess market timing using company-specific structural change signals."""
+        parts = []
 
-        context_hints = []
-        if has_dx:
-            context_hints.append("デジタル変革の加速")
-        if has_green:
-            context_hints.append("脱炭素への転換")
-        if has_global:
-            context_hints.append("グローバル市場の構造変化")
-        context_str = "・".join(context_hints) if context_hints else ""
+        # Extract company-specific change signals from midterm plan
+        change_signals = []
+        if midterm:
+            signal_map = {
+                "DX": "デジタルトランスフォーメーション（DX）の推進",
+                "デジタル": "デジタル技術の事業への本格導入",
+                "カーボン": "カーボンニュートラルへの移行",
+                "脱炭素": "脱炭素経営への転換",
+                "環境": "環境対応型の事業構造への移行",
+                "グローバル": "海外市場での事業拡大",
+                "海外": "グローバルサプライチェーンの再構築",
+                "M&A": "M&Aによる事業ポートフォリオの再編",
+                "人的資本": "人的資本経営への転換",
+                "ウェルビーイング": "従業員ウェルビーイングの重視",
+                "AI": "AI技術の事業プロセスへの組み込み",
+                "自動化": "業務自動化・省人化の推進",
+                "サステナ": "サステナビリティ経営の本格化",
+                "ESG": "ESG指標に基づく経営改革",
+                "プラットフォーム": "プラットフォーム型ビジネスへの転換",
+                "サブスクリプション": "ストック型収益モデルへの移行",
+                "ヘルスケア": "ヘルスケア・予防医療領域への参入",
+                "モビリティ": "次世代モビリティへの対応",
+                "半導体": "半導体関連の技術投資の加速",
+                "量子": "量子技術の研究開発への着手",
+            }
+            for keyword, signal in signal_map.items():
+                if keyword in midterm[:3000]:
+                    change_signals.append(signal)
+            # Cap at 3 most relevant signals
+            change_signals = change_signals[:3]
+
+        # Extract theme names for company-specific context
+        tech_themes = _extract_tech_themes(nf.rationale) or _extract_tech_themes(tp.rationale)
+        theme_names_a = _extract_theme_names(af.rationale)
 
         if exit_type == "rd":
+            # Use company name and specific tech themes
+            tech_str = "「" + "」「".join(tech_themes) + "」" if tech_themes else "当該技術"
             if nf.value > 0.7 and oi.value > 0.3:
-                text = (
-                    f"この技術領域では、従来のやり方に限界が見え始め、"
-                    f"新しいアプローチへの切り替えが進みつつある局面です。"
-                    f"企業側の技術ニーズが明確で、かつ外部連携への体制が整っていることから、"
-                    f"研究成果を実用化に結びつけるのに最も効果的なタイミングと言えます。"
-                    f"このような「転換期」に産学連携で参入することで、"
-                    f"新技術の標準化や市場形成の初期段階から関与できます。"
+                parts.append(
+                    f"{company_name}が取り組む{tech_str}の領域では、"
+                    f"従来技術の限界が認識され、新しいアプローチへの切り替えが進行中です。"
+                    f"同社のニーズ適合度{_m(f'{nf.value*100:.0f}%')}は"
+                    f"技術課題が明確に言語化されていることを示しており、"
+                    f"外部連携体制（OI度{_m(f'{oi.value*100:.0f}%')}）も整っています。"
+                    f"技術標準や市場ルールが固まる前のこの段階で連携を開始すれば、"
+                    f"研究成果を業界標準に組み込む影響力を持てます。"
                 )
             elif nf.value > 0.5:
-                text = (
-                    f"既存技術の限界が業界内で認識され始めている段階です。"
-                    f"まだ代替技術が確立されていないため、"
-                    f"研究シーズが市場に受け入れられる「機会の窓」が開きつつあります。"
-                    f"今のうちに企業との関係を構築しておくことで、"
-                    f"本格的な技術転換が起きた際に先行者優位を確保できます。"
+                parts.append(
+                    f"{company_name}では{tech_str}に関する技術課題が顕在化しつつありますが、"
+                    f"代替技術はまだ確立されていません"
+                    f"（ニーズ適合度{_m(f'{nf.value*100:.0f}%')}）。"
+                    f"この「技術の空白期」は、研究シーズが企業に受け入れられやすい"
+                    f"タイミングです。"
+                    f"競合他社がまだ動いていない今の段階で関係を構築しておくことが、"
+                    f"本格的な技術転換期に先行者優位を確保する鍵となります。"
                 )
             else:
-                text = (
-                    f"この領域の技術変化はまだ緩やかな段階にあります。"
-                    f"今すぐの事業化は難しいかもしれませんが、"
-                    f"将来の大きな変化に備えた「種まき」としての関係構築は有効です。"
-                    f"産学連携は成果が出るまでに時間がかかるため、"
-                    f"変化が本格化する前に始めることが戦略的に重要です。"
+                parts.append(
+                    f"{company_name}における{tech_str}関連の技術変化は"
+                    f"まだ初期段階にあります（ニーズ適合度{_m(f'{nf.value*100:.0f}%')}）。"
+                    f"短期的な事業化は難しい可能性がありますが、"
+                    f"産学連携は成果が出るまでに2〜5年かかるため、"
+                    f"変化が本格化する前の今こそ「種まき」として関係構築を始める好機です。"
                 )
-            if context_str:
-                text += (
-                    f"同社の経営計画からは{context_str}といった"
-                    f"大きな変化への対応が読み取れ、これらの流れが"
-                    f"研究テーマとの連携機会をさらに後押しする可能性があります。"
-                )
-            return text
         elif exit_type == "new_domain":
+            # Use ambition themes for specificity
+            ambition_str = "「" + "」「".join(theme_names_a[:2]) + "」" if theme_names_a else "新規事業"
             if af.value > 0.5 and fo.value > 0.3:
-                text = (
-                    f"この新領域では、規制の変化や社会的ニーズの高まりなど、"
-                    f"市場が大きく動き始める兆候が見られます。"
-                    f"企業が積極的に参入を検討しているこのタイミングは、"
-                    f"研究者が「どんな問いを立てるべきか」という"
-                    f"最も上流の段階から関与できる貴重な機会です。"
-                    f"新市場のルール形成に研究知見が影響を与えられる可能性があります。"
+                parts.append(
+                    f"{company_name}が掲げる{ambition_str}の領域では、"
+                    f"規制環境の変化や社会的ニーズの高まりを背景に"
+                    f"市場が形成され始めています"
+                    f"（野心適合度{_m(f'{af.value*100:.0f}%')}、"
+                    f"将来価値{_m(f'{fo.value*100:.0f}%')}）。"
+                    f"市場のルールや評価基準がまだ定まっていないこの段階は、"
+                    f"研究者が「何を問うべきか」という最上流から関与できる貴重な機会です。"
+                )
+            elif af.value > 0.5:
+                parts.append(
+                    f"{company_name}は{ambition_str}への参入意欲を明確にしています"
+                    f"（野心適合度{_m(f'{af.value*100:.0f}%')}）が、"
+                    f"事業モデルはまだ模索段階です。"
+                    f"不確実性が高いこの時期は、学術研究者の「問いを立てる力」が"
+                    f"最も差別化要因となる局面です。"
+                    f"事業の方向性と研究テーマを同時に設計できるのは、"
+                    f"この初期段階だけの特権です。"
                 )
             else:
-                text = (
-                    f"新事業領域はまだ黎明期にあり、不確実性が高い段階です。"
-                    f"しかし、不確実な時期だからこそ、"
-                    f"学術研究者の「問いを立てる力」が最も活きる局面です。"
-                    f"この段階から関わることで、研究テーマと事業方向性を"
-                    f"同時に設計できるという、後からでは得られない戦略的優位があります。"
+                parts.append(
+                    f"{company_name}の{ambition_str}への取り組みは"
+                    f"まだ構想段階にあります（野心適合度{_m(f'{af.value*100:.0f}%')}）。"
+                    f"事業化の確度は未知数ですが、だからこそ研究者が"
+                    f"初期段階から関わることで、研究テーマと事業方向性を"
+                    f"共に形作れるという戦略的優位があります。"
                 )
-            if context_str:
-                text += (
-                    f"同社は{context_str}を経営の方向性として掲げており、"
-                    f"こうした構造的な変化が新領域での連携に追い風となります。"
-                )
-            return text
         else:  # exploratory
+            # Use matching theme axes for specificity
+            by_ax: dict[str, list[str]] = {}
+            for m_t in cached_matching_themes[:10]:
+                al = {"humanities": "社会課題", "tech": "技術", "ambition": "新規事業"}.get(m_t.get("axis", ""), "")
+                if al:
+                    by_ax.setdefault(al, []).append(m_t["label"])
+            axis_count = len(by_ax)
+            sample_themes = []
+            for ax_names in by_ax.values():
+                sample_themes.extend(ax_names[:1])
+
             if tb.value > 0.4 and hf.value > 0.2:
-                text = (
-                    f"複数の分野にわたるテーマの接点は、"
-                    f"いくつもの変化が同時に進行している兆候です。"
-                    f"技術・社会・市場の変化が重なり合う領域では、"
-                    f"異なる分野間の対話から予想外の発見が生まれやすくなります。"
-                    f"こうした「変化の交差点」こそ、探索的な産学対話の"
-                    f"最も大きなリターンが期待できる場です。"
+                theme_examples = "「" + "」「".join(sample_themes[:3]) + "」" if sample_themes else "複数テーマ"
+                parts.append(
+                    f"{company_name}との接点は{theme_examples}など"
+                    f"{_m(f'{axis_count}つの軸')}にまたがっています"
+                    f"（テーマ幅{_m(f'{tb.value*100:.0f}%')}）。"
+                    f"これは同社の事業領域で技術・社会・市場の変化が"
+                    f"同時進行していることを示唆しています。"
+                    f"こうした「変化の交差点」では、異分野の視点を持つ研究者との"
+                    f"対話から、既存の枠組みでは生まれない着想が期待できます。"
                 )
             else:
-                text = (
-                    f"現時点では明確な変化の兆候は限定的ですが、"
+                parts.append(
+                    f"{company_name}との接点は現時点ではまだ限定的ですが"
+                    f"（テーマ幅{_m(f'{tb.value*100:.0f}%')}）、"
                     f"産業構造の変化は徐々に進行するものです。"
-                    f"早い段階で異分野との対話チャネルを持っておくことは、"
-                    f"将来の変化をいち早く察知し、機会を掴むための"
-                    f"「知的アンテナ」として機能します。"
+                    f"今の段階で異分野との対話チャネルを持っておくことは、"
+                    f"同社の事業環境に起きる将来の変化をいち早く察知し、"
+                    f"連携機会を掴むための「知的アンテナ」として機能します。"
                 )
-            if context_str:
-                text += (
-                    f"同社の事業環境では{context_str}が進行しており、"
-                    f"これらの変化が新たな対話テーマを生み出す可能性があります。"
-                )
-            return text
+
+        # Add company-specific change signals from midterm plan
+        if change_signals:
+            signals_str = "、".join(change_signals)
+            parts.append(
+                f"同社の経営計画からは具体的に{signals_str}が読み取れます。"
+                f"これらの構造変化が研究テーマとの新たな接点を生み出す可能性があります。"
+            )
+
+        # Add R&D intensity comparison with peers for additional specificity
+        if peers and ct_rd_int > 0:
+            peer_rd_ints = [p.get("rd_intensity", 0) for p in peers if p.get("rd_intensity", 0) > 0]
+            if peer_rd_ints:
+                avg_peer = sum(peer_rd_ints) / len(peer_rd_ints)
+                if ct_rd_int > avg_peer * 1.3:
+                    parts.append(
+                        f"研究開発比率{_m(f'{ct_rd_int*100:.1f}%')}は"
+                        f"同業他社平均{avg_peer*100:.1f}%を上回っており、"
+                        f"技術変化への対応力が高い企業と言えます。"
+                    )
+
+        return "".join(parts)
 
     # ── Agent 4: Collaboration Architect ──
     def _agent_collab() -> str:
