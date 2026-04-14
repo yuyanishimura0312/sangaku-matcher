@@ -702,6 +702,25 @@ def _generate_exit_hypothesis(
         theme_names_a = _extract_theme_names(af.rationale)
         sy = features.get("synergy", FeatureResult(0, ""))
 
+        # Build detailed R&D keyword map from securities report
+        rd_keywords = []
+        if rd_text and len(rd_text) > 50:
+            keyword_map = [
+                (["AI", "機械学習", "人工知能"], "AI・機械学習"),
+                (["素材", "材料"], "新素材・材料"),
+                (["バイオ", "医薬", "ヘルスケア", "創薬"], "バイオ・医薬"),
+                (["環境", "エネルギー", "再生可能"], "環境・エネルギー"),
+                (["半導体", "電子"], "半導体・電子"),
+                (["ロボット", "自動化", "自動運転"], "ロボティクス・自動化"),
+                (["量子", "量子コンピュータ"], "量子技術"),
+                (["セキュリティ", "サイバー"], "セキュリティ"),
+                (["光学", "イメージング", "センサ"], "光学・センシング"),
+                (["通信", "5G", "ネットワーク"], "通信・ネットワーク"),
+            ]
+            for keywords, label in keyword_map:
+                if any(kw in rd_text for kw in keywords):
+                    rd_keywords.append(label)
+
         if exit_type == "rd":
             if tech_themes:
                 theme_str = "「" + "」「".join(tech_themes) + "」"
@@ -723,40 +742,40 @@ def _generate_exit_hypothesis(
                     f"ニーズ適合度の高さは、企業側で既に課題が明確化されており、"
                     f"研究成果の技術実証（TRL 4-6）から社会実装（TRL 7-9）への"
                     f"橋渡しが比較的スムーズに進む可能性を示しています。"
+                    f"具体的には、企業側の開発リソースと研究者の専門知見を組み合わせた"
+                    f"プロトタイプ開発や実証実験が現実的な次のステップとなります。"
                 )
             elif nf.value > 0.4:
                 text += (
                     f"基礎研究段階（TRL 1-3）の知見が、"
                     f"企業側の応用開発と接続できる領域です。"
-                    f"共同研究を通じて技術の成熟度を高めていく段階にあります。"
+                    f"共同研究を通じて技術の成熟度を高めていく段階にあり、"
+                    f"まず概念実証（PoC）から始めて段階的に実用化を目指すアプローチが有効です。"
+                )
+            else:
+                text += (
+                    f"技術的な接点は潜在的な段階（TRL 1-2）にありますが、"
+                    f"基礎研究の知見が将来的に企業の技術課題と結びつく可能性を持っています。"
                 )
             # Synergy
             if sy.value > 0.3:
                 text += (
                     f"技術ニーズと社会課題の交差領域でシナジー効果"
                     f"（{_m(f'{sy.value*100:.0f}%')}）も確認されており、"
-                    f"複合的な研究価値が見込まれます。"
+                    f"技術的な価値に加えて社会的インパクトも見込める"
+                    f"複合的な研究テーマとして発展させられる可能性があります。"
                 )
-            # Add R&D text insights
-            if rd_text and len(rd_text) > 50:
-                rd_keywords = []
-                if "AI" in rd_text or "機械学習" in rd_text:
-                    rd_keywords.append("AI・機械学習")
-                if "素材" in rd_text or "材料" in rd_text:
-                    rd_keywords.append("新素材・材料")
-                if "バイオ" in rd_text or "医薬" in rd_text:
-                    rd_keywords.append("バイオ・医薬")
-                if "環境" in rd_text or "エネルギー" in rd_text:
-                    rd_keywords.append("環境・エネルギー")
-                if "半導体" in rd_text or "電子" in rd_text:
-                    rd_keywords.append("半導体・電子")
-                if "ロボット" in rd_text or "自動化" in rd_text:
-                    rd_keywords.append("ロボティクス・自動化")
-                if rd_keywords:
+            # R&D text insights
+            if rd_keywords:
+                text += (
+                    f"同社の研究開発活動は"
+                    f"{'、'.join(rd_keywords[:4])}の領域を中心に展開されており、"
+                    f"研究テーマとの技術的な補完関係が期待されます。"
+                )
+                if len(rd_keywords) > 2:
                     text += (
-                        f"同社の研究開発活動は"
-                        f"{'、'.join(rd_keywords[:3])}の領域を中心に展開されており、"
-                        f"研究テーマとの技術的な補完関係が期待されます。"
+                        f"複数の技術領域にまたがる研究開発体制は、"
+                        f"学際的な研究テーマとの親和性が高いことを示唆しています。"
                     )
         elif exit_type == "new_domain":
             if theme_names_a:
@@ -767,6 +786,8 @@ def _generate_exit_hypothesis(
                     f"（野心適合度{_m(f'{af.value*100:.0f}%')}）。"
                     f"新領域での技術基盤はまだ発展途上（TRL 1-3相当）であり、"
                     f"研究者の知見が問いの設定段階から貢献できる余地が大きい領域です。"
+                    f"特に、既存の技術アセットを新領域にどう転用するかという"
+                    f"「技術の再文脈化」において、学術的な知見が鍵を握ります。"
                 )
             else:
                 text = (
@@ -774,12 +795,22 @@ def _generate_exit_hypothesis(
                     f"（野心適合度{_m(f'{af.value*100:.0f}%')}）。"
                     f"既存の技術資産とは異なる知識基盤が必要な段階であり、"
                     f"学術研究者との連携が技術的な探索の幅を広げます。"
+                    f"新領域における技術の方向性自体がまだ定まっていないため、"
+                    f"研究者の専門的な視点が技術選択の判断に直接貢献できます。"
                 )
             if hf.value > 0.2:
                 text += (
                     f"人文・社会科学との親和性（{_m(f'{hf.value*100:.0f}%')}）も高く、"
-                    f"「なぜその事業が社会に必要か」という問いの構築に、"
+                    f"「なぜその事業が社会に必要か」という問いの構築に"
                     f"研究者の視点が差別化要因となります。"
+                    f"技術的な実現可能性だけでなく、社会的な受容性や倫理的な妥当性まで含めた"
+                    f"多角的な検討が、新領域の事業設計には不可欠です。"
+                )
+            # R&D keywords for new_domain context
+            if rd_keywords:
+                text += (
+                    f"同社の既存の研究基盤は{'、'.join(rd_keywords[:3])}にあり、"
+                    f"これらの技術蓄積を新領域でどう活用するかが連携の焦点となります。"
                 )
         else:  # exploratory
             by_ax: dict[str, list[str]] = {}
@@ -798,11 +829,21 @@ def _generate_exit_hypothesis(
                 f"などのテーマが接点となります。"
                 f"技術的な距離がある分野間の対話は、既存の枠組みでは"
                 f"生まれにくい新しい着想の源泉となります。"
+                f"直接的な技術移転よりも、異なる視点の衝突から"
+                f"新たな問いや仮説が生まれることに価値があります。"
             )
             if hf.value > 0.2:
                 text += (
                     f"人文・社会科学の接点（{_m(f'{hf.value*100:.0f}%')}）も確認されており、"
                     f"技術者とは異なる視座での対話が可能です。"
+                    f"技術的課題を社会的文脈から再定義することで、"
+                    f"既存のアプローチでは見えなかった解決策が浮かび上がる可能性があります。"
+                )
+            # R&D keywords for exploratory context
+            if rd_keywords:
+                text += (
+                    f"同社の技術領域は{'、'.join(rd_keywords[:3])}に及んでおり、"
+                    f"これらの多様な技術基盤が探索的対話の素材となります。"
                 )
         return text
 
@@ -811,55 +852,91 @@ def _generate_exit_hypothesis(
         """Evaluate collaboration value from management perspective."""
         parts = []
 
-        # R&D intensity context (use ratio, not raw amounts which may have uncertain units)
+        # R&D intensity context with company name
         if ct_rd_int > 0.1:
             parts.append(
-                f"研究開発比率{_m(f'{ct_rd_int*100:.1f}%')}と高い水準の技術投資を行っており、"
+                f"{company_name}は研究開発比率{_m(f'{ct_rd_int*100:.1f}%')}と"
+                f"高い水準の技術投資を行っています。"
+                f"売上高の1割以上を研究開発に充てる姿勢は、"
+                f"外部の研究知見を積極的に取り込む経営方針の表れです。"
             )
         elif ct_rd_int > 0.03:
             parts.append(
-                f"研究開発比率{_m(f'{ct_rd_int*100:.1f}%')}の技術投資を行っており、"
+                f"{company_name}の研究開発比率は{_m(f'{ct_rd_int*100:.1f}%')}です。"
+                f"安定的な技術投資を継続しており、"
+                f"産学連携の受け皿となる研究開発体制が整っています。"
             )
         elif ct_rd_int > 0:
             parts.append(
-                f"研究開発比率は{_m(f'{ct_rd_int*100:.1f}%')}ですが、"
+                f"{company_name}の研究開発比率は{_m(f'{ct_rd_int*100:.1f}%')}と"
+                f"やや控えめですが、事業規模を活かした応用開発力に強みがあり、"
+                f"研究者の知見を実用化に結びつける実行力が期待できます。"
             )
+        else:
+            parts.append(f"{company_name}の経営戦略を分析します。")
 
-        # Absorptive capacity — plain language
+        # Absorptive capacity — detailed assessment
         if ac.value > 0.5 and pt.value > 0.2:
             parts.append(
                 f"外部の研究知見を取り込み事業に活かす力（吸収力{_m(f'{ac.value*100:.0f}%')}）が高く、"
                 f"大学との共同研究実績もあります。"
                 f"研究成果が実際の製品・サービスに結びつく確度が高い企業です。"
+                f"過去の連携実績は、知財管理や研究者との協働における"
+                f"社内プロセスが既に確立されていることを意味し、"
+                f"新たな連携もスムーズに立ち上がる可能性が高いと言えます。"
             )
         elif ac.value > 0.5:
             parts.append(
                 f"研究開発への投資が活発で（吸収力{_m(f'{ac.value*100:.0f}%')}）、"
                 f"外部の研究成果を事業に取り込む体制があります。"
-                f"大学との連携経験は限られるため、段階的なアプローチが効果的です。"
+                f"大学との連携経験は限られるため、"
+                f"まず小規模なアドバイザリー契約や技術コンサルティングから始め、"
+                f"相互理解を深めたうえで本格的な共同研究に移行する段階的アプローチが効果的です。"
             )
         elif pt.value > 0.2:
             parts.append(
                 f"大学との連携実績があり、共同研究の進め方に慣れた企業です。"
-                f"契約や知財の社内手続きが整備されている可能性が高く、"
+                f"契約交渉や知財の取り扱いに関する社内手続きが整備されている可能性が高く、"
                 f"スムーズな連携開始が期待できます。"
+                f"過去の連携パートナーや研究テーマとの比較から、"
+                f"自社にとっての連携価値を評価する力も備えていると考えられます。"
             )
         else:
             parts.append(
                 f"研究開発投資は中程度（吸収力{_m(f'{ac.value*100:.0f}%')}）ですが、"
                 f"テーマの適合度の高さが連携の動機づけとなります。"
-                f"まず技術コンサルティングなど軽い形から関係構築するのが効果的です。"
+                f"まず技術コンサルティングなど軽い形から関係構築し、"
+                f"企業側が産学連携の価値を実感できるクイックウィンを"
+                f"早期に示すことが、継続的な連携への鍵となります。"
             )
 
-        # OI体制
+        # OI体制 — detailed
         if oi.value > 0.4:
             parts.append(
                 f"外部連携への積極性（OI度{_m(f'{oi.value*100:.0f}%')}）も高く、"
                 f"社外との協業を推進する組織体制が整っています。"
+                f"オープンイノベーション推進部門やCTOオフィスなど、"
+                f"外部連携の窓口が明確な企業である可能性が高く、"
+                f"連携提案の持ち込み先が見つけやすい環境です。"
             )
         elif oi.value > 0.2:
             parts.append(
                 f"外部連携への取り組み（OI度{_m(f'{oi.value*100:.0f}%')}）も確認されています。"
+                f"連携体制は構築途上ですが、外部知見への関心は明確であり、"
+                f"具体的な研究テーマを起点とした提案が有効です。"
+            )
+
+        # Employee scale context
+        if ct_employees > 10000:
+            parts.append(
+                f"従業員数{_m(f'{ct_employees:,}名')}の大規模組織であり、"
+                f"研究成果の事業化に必要な製造・販売・マーケティングの"
+                f"実行リソースを社内に持つ点は大きな強みです。"
+            )
+        elif ct_employees > 1000:
+            parts.append(
+                f"従業員数{_m(f'{ct_employees:,}名')}の中堅企業として、"
+                f"意思決定の速さと事業化リソースのバランスが取れた組織です。"
             )
 
         # ESG / social value for non-rd exits
@@ -868,16 +945,19 @@ def _generate_exit_hypothesis(
                 f"ESG経営やサステナビリティが重要課題となる中、"
                 f"社会科学的な視点を持つ研究者との連携は、"
                 f"事業の社会的正当性を裏づける戦略的投資と位置づけられます。"
+                f"投資家や顧客からのESG要請に応える上でも、"
+                f"学術的なエビデンスに基づく取り組みは説得力を持ちます。"
             )
 
         # Future option
         if fo.value > 0.3 and exit_type != "rd":
             parts.append(
                 f"将来に向けた選択肢の価値（{_m(f'{fo.value*100:.0f}%')}）も高く、"
-                f"中長期的な知的資産として連携の意義があります。"
+                f"短期的な収益貢献だけでなく、中長期的な知的資産・"
+                f"ネットワーク構築として連携の意義があります。"
             )
 
-        # Strategic direction from midterm plan
+        # Strategic direction from midterm plan — expanded
         if midterm and len(midterm) > 200:
             strategic_dirs = []
             if "成長" in midterm[:3000] and "投資" in midterm[:3000]:
@@ -886,11 +966,15 @@ def _generate_exit_hypothesis(
                 strategic_dirs.append("イノベーション推進")
             if "社会" in midterm[:2000] and "課題" in midterm[:2000]:
                 strategic_dirs.append("社会課題への取り組み")
+            if "収益" in midterm[:2000] and "構造" in midterm[:2000]:
+                strategic_dirs.append("収益構造の転換")
+            if "DX" in midterm[:3000] or "デジタル" in midterm[:3000]:
+                strategic_dirs.append("デジタル変革")
             if strategic_dirs:
                 parts.append(
-                    f"経営計画では{'・'.join(strategic_dirs)}が打ち出されており、"
-                    f"産学連携を通じた外部知見の獲得は"
-                    f"この経営方針とも整合します。"
+                    f"経営計画では{'・'.join(strategic_dirs[:4])}が打ち出されています。"
+                    f"これらの経営方針は産学連携を通じた外部知見の獲得と整合しており、"
+                    f"経営層の理解を得やすい環境にあると判断できます。"
                 )
 
         return "".join(parts)
@@ -1035,8 +1119,17 @@ def _generate_exit_hypothesis(
             signals_str = "、".join(change_signals)
             parts.append(
                 f"同社の経営計画からは具体的に{signals_str}が読み取れます。"
-                f"これらの構造変化が研究テーマとの新たな接点を生み出す可能性があります。"
+                f"これらの構造変化は同社内部の意思決定だけでなく、"
+                f"業界全体のトレンドを反映したものであり、"
+                f"研究テーマとの新たな接点を生み出す可能性があります。"
             )
+            # Add implication of signals for collaboration timing
+            if len(change_signals) >= 2:
+                parts.append(
+                    f"複数の変化が同時に進行している点は注目に値します。"
+                    f"個別の変化よりも、変化の重なりが新たな課題や機会を生み出すため、"
+                    f"学際的な視点を持つ研究者の関与がとりわけ有効な局面です。"
+                )
 
         # Add R&D intensity comparison with peers for additional specificity
         if peers and ct_rd_int > 0:
@@ -1048,7 +1141,26 @@ def _generate_exit_hypothesis(
                         f"研究開発比率{_m(f'{ct_rd_int*100:.1f}%')}は"
                         f"同業他社平均{avg_peer*100:.1f}%を上回っており、"
                         f"技術変化への対応力が高い企業と言えます。"
+                        f"業界内でいち早く変化に対応しようとする姿勢は、"
+                        f"外部の研究者と連携する意欲の高さとも相関します。"
                     )
+                elif ct_rd_int < avg_peer * 0.7:
+                    parts.append(
+                        f"研究開発比率{_m(f'{ct_rd_int*100:.1f}%')}は"
+                        f"同業他社平均{avg_peer*100:.1f}%をやや下回っていますが、"
+                        f"だからこそ外部の研究知見を活用する産学連携が、"
+                        f"自社単独では難しい技術的飛躍を実現する手段となり得ます。"
+                    )
+
+        # Humanities fit as a timing indicator
+        if hf.value > 0.4 and exit_type != "rd":
+            parts.append(
+                f"人文・社会科学との親和性{_m(f'{hf.value*100:.0f}%')}の高さは、"
+                f"同社の事業が技術的な変化だけでなく社会的・文化的な変化とも"
+                f"深く関わっていることを示しています。"
+                f"こうした多層的な変化の中では、技術者だけでは捉えきれない"
+                f"社会の文脈を読み解く研究者の力が重要になります。"
+            )
 
         return "".join(parts)
 
@@ -1126,77 +1238,141 @@ def _generate_exit_hypothesis(
 
         # Use midterm plan text to extract key strategy keywords
         if midterm and len(midterm) > 100:
-            # Extract notable short phrases (first 500 chars of midterm plan)
-            plan_excerpt = midterm[:500].replace("\n", " ").strip()
             parts.append(
-                f"中期経営計画の分析から、同社は"
+                f"{company_name}の中期経営計画（{_m(f'{len(midterm):,}文字')}）を分析しました。"
             )
-            # Extract key strategic direction from text
+            # Extract key strategic directions with more detail
+            strategy_items = []
             if "DX" in midterm or "デジタル" in midterm:
-                parts.append(f"デジタル変革（DX）を重点戦略に掲げており、")
+                strategy_items.append("デジタル変革（DX）を重点戦略に掲げ、業務プロセスの刷新や新たなデジタルサービスの創出を志向")
             if "カーボンニュートラル" in midterm or "脱炭素" in midterm:
-                parts.append(f"脱炭素・カーボンニュートラルに注力しており、")
+                strategy_items.append("脱炭素・カーボンニュートラルに注力し、環境負荷の低減を経営の中核課題として位置づけ")
             if "グローバル" in midterm or "海外" in midterm[:2000]:
-                parts.append(f"グローバル展開を推進しており、")
+                strategy_items.append("グローバル展開を推進し、海外市場での事業拡大や現地パートナーとの連携を強化")
             if "M&A" in midterm or "買収" in midterm:
-                parts.append(f"M&Aによる事業領域拡大を進めており、")
+                strategy_items.append("M&Aを通じた事業領域の拡大を進め、非連続な成長を追求")
             if "人的資本" in midterm or "人材" in midterm[:1000]:
-                parts.append(f"人的資本経営を重視しており、")
-            parts.append(
-                f"これらの経営方針と研究テーマの接点が連携の起点となります。"
-            )
+                strategy_items.append("人的資本経営を重視し、多様な人材の確保・育成を競争力の源泉として位置づけ")
+            if "サステナ" in midterm or "持続可能" in midterm:
+                strategy_items.append("サステナビリティを経営戦略に統合し、社会的価値と経済的価値の両立を追求")
+            if "イノベーション" in midterm:
+                strategy_items.append("イノベーション創出を経営の柱とし、既存事業の枠を超えた価値創造を志向")
+            if strategy_items:
+                parts.append(
+                    f"主な戦略方向として、"
+                    f"{'しています。また、'.join(strategy_items[:4])}しています。"
+                    f"これらの経営方針は研究テーマとの接点を複数持っており、連携の起点となり得ます。"
+                )
 
-        # R&D text analysis
+        # R&D text analysis — expanded with more keyword categories
         if rd_text and len(rd_text) > 50:
-            parts.append(
-                f"研究開発の記述（{_m(f'{len(rd_text):,}文字')}）からは、"
-            )
-            if "AI" in rd_text or "機械学習" in rd_text or "人工知能" in rd_text:
-                parts.append(f"AI・機械学習技術の研究開発、")
-            if "素材" in rd_text or "材料" in rd_text:
-                parts.append(f"新素材・材料技術の開発、")
-            if "バイオ" in rd_text or "医薬" in rd_text or "ヘルスケア" in rd_text:
-                parts.append(f"バイオ・医薬・ヘルスケア領域の研究、")
-            if "環境" in rd_text or "エネルギー" in rd_text:
-                parts.append(f"環境・エネルギー技術の開発、")
-            parts.append(f"などの取り組みが確認されています。")
+            rd_areas = []
+            rd_detail_map = [
+                (["AI", "機械学習", "人工知能", "深層学習"], "AI・機械学習技術の研究開発"),
+                (["素材", "材料", "高分子", "セラミック"], "新素材・材料技術の開発"),
+                (["バイオ", "医薬", "ヘルスケア", "創薬", "ゲノム"], "バイオ・医薬・ヘルスケア領域の研究"),
+                (["環境", "エネルギー", "再生可能", "水素"], "環境・エネルギー技術の開発"),
+                (["半導体", "電子", "量子"], "半導体・先端電子技術の研究"),
+                (["ロボット", "自動化", "自動運転"], "ロボティクス・自動化技術の研究"),
+                (["セキュリティ", "サイバー", "暗号"], "セキュリティ技術の研究"),
+                (["光学", "イメージング", "センサ", "計測"], "光学・センシング技術の開発"),
+                (["食品", "農業", "発酵"], "食品・農業技術の研究"),
+                (["建設", "インフラ", "都市"], "建設・インフラ技術の開発"),
+            ]
+            for keywords, label in rd_detail_map:
+                if any(kw in rd_text for kw in keywords):
+                    rd_areas.append(label)
+            if rd_areas:
+                parts.append(
+                    f"有価証券報告書の研究開発セクション（{_m(f'{len(rd_text):,}文字')}）からは、"
+                    f"{'、'.join(rd_areas[:5])}などの取り組みが確認されています。"
+                )
+                if len(rd_areas) >= 3:
+                    parts.append(
+                        f"研究開発の対象領域が{len(rd_areas)}分野にわたる点は、"
+                        f"技術の多角化を進める企業戦略の表れであり、"
+                        f"学際的な研究テーマとの接点が見つかりやすい環境と言えます。"
+                    )
+            else:
+                parts.append(
+                    f"有価証券報告書には{_m(f'{len(rd_text):,}文字')}の"
+                    f"研究開発記述が含まれており、技術投資への注力が確認できます。"
+                )
 
-        # Peer comparison
+        # Ambitions text analysis
+        if ambitions_text and len(ambitions_text) > 50:
+            parts.append(
+                f"事業リスク・成長機会の記述からは、"
+                f"同社が認識している市場の変化や挑戦すべき領域が読み取れます。"
+                f"こうした企業自身の課題認識は、研究者が連携提案を行う際の"
+                f"重要な手がかりとなります。"
+            )
+
+        # Peer comparison — expanded
         if peers:
             peer_rd_ints = [p["rd_intensity"] for p in peers if p.get("rd_intensity")]
             if peer_rd_ints and ct_rd_int > 0:
                 avg_rd_int = sum(peer_rd_ints) / len(peer_rd_ints)
                 if ct_rd_int > avg_rd_int * 1.3:
+                    ratio = ct_rd_int / avg_rd_int
                     parts.append(
                         f"同業他社（{len(peers)}社）との比較では、"
                         f"研究開発比率が業界平均{_m(f'{avg_rd_int*100:.1f}%')}を"
-                        f"大きく上回る{_m(f'{ct_rd_int*100:.1f}%')}であり、"
+                        f"大きく上回る{_m(f'{ct_rd_int*100:.1f}%')}（平均の{ratio:.1f}倍）であり、"
                         f"技術投資に積極的な企業として際立っています。"
+                        f"この水準の研究開発投資は、外部の研究機関との連携に"
+                        f"必要な予算と人材を確保できる経営基盤があることを示唆します。"
                     )
                 elif ct_rd_int > avg_rd_int * 0.8:
                     parts.append(
-                        f"同業他社との比較では、研究開発比率"
+                        f"同業他社（{len(peers)}社）との比較では、研究開発比率"
                         f"（{_m(f'{ct_rd_int*100:.1f}%')} vs "
                         f"業界平均{_m(f'{avg_rd_int*100:.1f}%')}）は同水準であり、"
                         f"業界標準レベルの研究投資を行っています。"
+                        f"業界の中で突出はしていないものの、"
+                        f"安定した研究開発基盤は産学連携の土台として十分です。"
                     )
                 else:
                     parts.append(
                         f"研究開発比率は業界平均（{_m(f'{avg_rd_int*100:.1f}%')}）を"
                         f"下回る{_m(f'{ct_rd_int*100:.1f}%')}ですが、"
-                        f"事業規模を活かした応用開発力に強みがある可能性があります。"
+                        f"事業規模を活かした応用開発力や、"
+                        f"外部連携を通じた研究開発の効率化に強みがある可能性があります。"
                     )
 
-            # OI comparison
+            # OI comparison — expanded
             peer_ois = [p["open_inno_score"] for p in peers if p.get("open_inno_score")]
             if peer_ois:
                 avg_oi = sum(peer_ois) / len(peer_ois)
                 co_oi = company_text.get("open_inno_score", 0) or 0
                 if co_oi > avg_oi * 1.3 and co_oi > 0.3:
                     parts.append(
-                        f"外部連携への積極性も業界内で突出しており、"
+                        f"外部連携への積極性（OI度{_m(f'{co_oi*100:.0f}%')} vs "
+                        f"業界平均{avg_oi*100:.0f}%）も業界内で突出しており、"
                         f"産学連携の受け皿として優位な位置にあります。"
+                        f"CVC（コーポレートベンチャーキャピタル）やアクセラレーター等を"
+                        f"通じた外部連携の実績がある可能性が高く、"
+                        f"研究者との対話に慣れた人材が社内にいると推測されます。"
                     )
+                elif co_oi > avg_oi * 0.8 and co_oi > 0.2:
+                    parts.append(
+                        f"外部連携への取り組み（OI度{_m(f'{co_oi*100:.0f}%')}）は"
+                        f"業界平均（{avg_oi*100:.0f}%）と同水準です。"
+                    )
+
+        # Employee scale in yuho context
+        if ct_employees > 0:
+            if ct_employees > 50000:
+                parts.append(
+                    f"従業員数{_m(f'{ct_employees:,}名')}の大規模企業であり、"
+                    f"多様な事業部門を持つことから、"
+                    f"研究テーマの応用先を複数の角度から探索できます。"
+                )
+            elif ct_employees > 5000:
+                parts.append(
+                    f"従業員数{_m(f'{ct_employees:,}名')}の規模を持ち、"
+                    f"研究成果の社内実装に必要な組織力を備えています。"
+                )
 
         if not parts:
             # Fallback when no text data available
@@ -1212,7 +1388,6 @@ def _generate_exit_hypothesis(
         _section("技術分析", _agent_tech()),
         _section("経営戦略分析", _agent_biz()),
         _section("変化点分析", _agent_inflection()),
-        _section("連携設計", _agent_collab()),
         _section("有報からの企業特徴", _agent_yuho()),
     ]
     return "\n".join(sections)
