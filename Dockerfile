@@ -14,18 +14,14 @@ RUN pip install --no-cache-dir \
     onnxruntime "optimum[onnxruntime]" transformers tokenizers \
     sentence-transformers
 
-# Copy source and install app
+# Install app package from pyproject.toml only (cached unless deps change)
 COPY pyproject.toml .
-COPY src/ src/
+COPY src/sangaku_matcher/__init__.py src/sangaku_matcher/__init__.py
 RUN pip install --no-cache-dir --no-deps . && \
     rm -rf /root/.cache
 
-# Copy static assets and templates into installed package
-RUN SITE_PKG=$(python -c "import sangaku_matcher.web; import os; print(os.path.dirname(sangaku_matcher.web.__file__))") && \
-    cp -r src/sangaku_matcher/web/static "$SITE_PKG/static" && \
-    cp -r src/sangaku_matcher/web/templates "$SITE_PKG/templates"
-
 # Export model to ONNX and quantize to int8 (~113MB vs 448MB)
+# This layer is cached because it doesn't depend on source code changes
 RUN python -c "\
 from optimum.onnxruntime import ORTModelForFeatureExtraction, ORTQuantizer; \
 from optimum.onnxruntime.configuration import AutoQuantizationConfig; \
@@ -51,8 +47,9 @@ COPY data/tech_taxonomy.json data/tech_taxonomy.json
 COPY data/ambition_taxonomy.json data/ambition_taxonomy.json
 COPY data/exit_weights.json data/exit_weights.json
 
-# Re-copy ALL source into site-packages to ensure latest code is deployed.
-# pip install layer is cached by Docker; this overwrites with current source.
+# Copy ALL source AFTER the expensive model build step.
+# Source changes only invalidate from here, skipping the ONNX build cache.
+COPY src/ src/
 RUN SITE_PKG=$(python -c "import sangaku_matcher; import os; print(os.path.dirname(sangaku_matcher.__file__))") && \
     cp -r src/sangaku_matcher/* "$SITE_PKG/"
 
