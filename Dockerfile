@@ -6,7 +6,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ && \
     rm -rf /var/lib/apt/lists/*
 
-# Install dependencies (NO PyTorch in final image)
+# Install Python dependencies (cached unless requirements change)
 RUN pip install --no-cache-dir \
     click pydantic pydantic-settings python-dotenv requests \
     numpy scipy pandas tenacity pdfplumber \
@@ -14,17 +14,8 @@ RUN pip install --no-cache-dir \
     onnxruntime "optimum[onnxruntime]" transformers tokenizers \
     sentence-transformers
 
-# Install app package — copy full src for pip install, then remove.
-# The ONNX model layer below is the expensive step; it only depends on
-# pip packages, not on our source code. We re-COPY src/ later (after
-# the model layer) so source-only changes skip the model rebuild.
-COPY pyproject.toml .
-COPY src/ src/
-RUN pip install --no-cache-dir --no-deps . && \
-    rm -rf /root/.cache src/
-
 # Export model to ONNX and quantize to int8 (~113MB vs 448MB)
-# This layer is cached as long as pip packages haven't changed
+# This expensive layer depends ONLY on pip packages above, not on source code.
 RUN python -c "\
 from optimum.onnxruntime import ORTModelForFeatureExtraction, ORTQuantizer; \
 from optimum.onnxruntime.configuration import AutoQuantizationConfig; \
@@ -50,11 +41,10 @@ COPY data/tech_taxonomy.json data/tech_taxonomy.json
 COPY data/ambition_taxonomy.json data/ambition_taxonomy.json
 COPY data/exit_weights.json data/exit_weights.json
 
-# Copy ALL source AFTER the expensive model build step.
-# Source changes only invalidate from here, skipping the ONNX build cache.
+# ── Source code layer (only this invalidates on code changes) ──
+COPY pyproject.toml .
 COPY src/ src/
-RUN SITE_PKG=$(python -c "import sangaku_matcher; import os; print(os.path.dirname(sangaku_matcher.__file__))") && \
-    cp -r src/sangaku_matcher/* "$SITE_PKG/"
+RUN pip install --no-cache-dir --no-deps . && rm -rf /root/.cache
 
 # Use ONNX backend with quantized local model
 ENV USE_ONNX=1
