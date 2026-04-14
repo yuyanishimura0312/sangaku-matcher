@@ -9,6 +9,10 @@ from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from sangaku_matcher.config import settings
 from sangaku_matcher.db import connect
@@ -18,6 +22,45 @@ TEMPLATES_DIR = WEB_DIR / "templates"
 STATIC_DIR = WEB_DIR / "static"
 
 app = FastAPI(title="sangaku-matcher", version="0.1.0")
+
+# Rate limiter — keyed by client IP address
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to every HTTP response."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        # Prevent MIME-type sniffing
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        # Deny embedding in frames (clickjacking protection)
+        response.headers["X-Frame-Options"] = "DENY"
+        # Legacy XSS filter for older browsers
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        # Limit referrer info sent to third parties
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # CSP: no external CDN used, so 'self' only.
+        # 'unsafe-inline' is required for inline <script> blocks (generateDetail)
+        # and inline <style> attributes used in templates.
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "font-src 'self'"
+        )
+        # HSTS: enforce HTTPS for 1 year (takes effect only over HTTPS)
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains"
+        )
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
+
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
@@ -39,6 +82,7 @@ async def home(request: Request):
 
 
 @app.post("/match", response_class=HTMLResponse)
+@limiter.limit("10/minute")
 async def match(
     request: Request,
     description: str = Form(...),
@@ -721,6 +765,7 @@ async def company_detail(request: Request, edinet_code: str):
 
 
 @app.post("/api/generate-detail", response_class=HTMLResponse)
+@limiter.limit("20/minute")
 async def generate_detail(
     request: Request,
     edinet_code: str = Form(...),
@@ -761,7 +806,8 @@ async def generate_detail(
 
 # JSON API
 @app.post("/api/match")
-async def api_match(payload: dict):
+@limiter.limit("10/minute")
+async def api_match(request: Request, payload: dict):
     from sangaku_matcher.seeds import parse_seed
     from sangaku_matcher.matcher import run_multi_exit_match
 

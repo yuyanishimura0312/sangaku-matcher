@@ -33,6 +33,9 @@ print('Quantized model cached')" && \
 RUN apt-get purge -y gcc g++ && apt-get autoremove -y && \
     rm -rf /root/.cache /tmp/*
 
+# Create non-root user before copying app files
+RUN useradd -m -u 1001 appuser
+
 # Copy data files
 COPY data/matcher.db data/matcher.db
 COPY data/theme_taxonomy.json data/theme_taxonomy.json
@@ -53,5 +56,9 @@ ENV USE_ONNX=1
 ENV EMBEDDING_MODEL=/app/model-cache
 ENV PORT=10000
 EXPOSE 10000
+
+# Transfer ownership of /app to appuser, then drop root privileges
+RUN chown -R appuser:appuser /app
+USER appuser
 
 CMD ["python", "-m", "uvicorn", "sangaku_matcher.web.app:app", "--host", "0.0.0.0", "--port", "10000", "--workers", "1"]

@@ -1,7 +1,7 @@
 # Deployment dependencies (lighter than full sentence-transformers + PyTorch)
 click>=8.1
 python-dotenv>=1.0
-requests>=2.31
+requests>=2.33.0
 pydantic>=2.5
 pydantic-settings>=2.1
 numpy>=1.26
@@ -9,10 +9,11 @@ scipy>=1.11
 pandas>=2.1
 pdfplumber>=0.10
 tenacity>=8.2
-fastapi>=0.110
+fastapi>=0.115.0
 uvicorn[standard]>=0.27
 jinja2>=3.1
-python-multipart>=0.0.6
+python-multipart>=0.0.22
 # Use ONNX runtime for lightweight inference (no PyTorch needed)
 onnxruntime>=1.17
 tokenizers>=0.15
+slowapi>=0.1.9
