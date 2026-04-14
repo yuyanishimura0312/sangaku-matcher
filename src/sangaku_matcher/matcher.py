@@ -1855,6 +1855,13 @@ def generate_detail_for_company(
     ambition_fit.precompute_seed_themes(seed.semantic_vector)
     theme_breadth.precompute_seed_themes(seed.semantic_vector)
 
+    # Pre-compute similarity distributions for z-score normalization
+    # (needs all companies, same as run_multi_exit_match)
+    with connect(settings.matcher_db_path) as conn2:
+        all_companies = _load_companies(conn2)
+    need_fit.precompute_distribution(seed.semantic_vector, all_companies)
+    tech_prox.precompute_distribution(seed.semantic_vector, all_companies)
+
     # NOTE: Do NOT deserialize vectors here — individual scorers handle
     # np.frombuffer internally. Passing pre-deserialized np.arrays would
     # cause "truth value of an array is ambiguous" errors in scorer code.
