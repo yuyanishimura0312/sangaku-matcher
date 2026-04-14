@@ -15,7 +15,6 @@ RUN pip install --no-cache-dir \
     sentence-transformers
 
 # Export model to ONNX and quantize to int8 (~113MB vs 448MB)
-# This expensive layer depends ONLY on pip packages above, not on source code.
 RUN python -c "\
 from optimum.onnxruntime import ORTModelForFeatureExtraction, ORTQuantizer; \
 from optimum.onnxruntime.configuration import AutoQuantizationConfig; \
@@ -30,26 +29,26 @@ t.save_pretrained('/app/model-cache'); \
 print('Quantized model cached')" && \
     rm -rf /tmp/onnx-fp32
 
-# Clean up build deps and caches
+# Clean up build deps
 RUN apt-get purge -y gcc g++ && apt-get autoremove -y && \
     rm -rf /root/.cache /tmp/*
 
-# Copy pre-built database, taxonomy files, and weight config
+# Copy data files
 COPY data/matcher.db data/matcher.db
 COPY data/theme_taxonomy.json data/theme_taxonomy.json
 COPY data/tech_taxonomy.json data/tech_taxonomy.json
 COPY data/ambition_taxonomy.json data/ambition_taxonomy.json
 COPY data/exit_weights.json data/exit_weights.json
 
-# ── Source code layer (only this invalidates on code changes) ──
+# Copy source and install (this layer rebuilds on code changes)
 COPY pyproject.toml .
 COPY src/ src/
-RUN pip install --no-cache-dir --no-deps . && \
-    SITE_PKG=$(python -c "import sangaku_matcher; import os; print(os.path.dirname(sangaku_matcher.__file__))") && \
-    cp -r src/sangaku_matcher/* "$SITE_PKG/" && \
-    rm -rf /root/.cache
+RUN pip install --no-cache-dir --no-deps .
 
-# Use ONNX backend with quantized local model
+# Overwrite site-packages with latest source to ensure all files are current
+RUN SITE_PKG=$(python -c "import sangaku_matcher; print(sangaku_matcher.__path__[0])") && \
+    cp -r src/sangaku_matcher/* "$SITE_PKG/"
+
 ENV USE_ONNX=1
 ENV EMBEDDING_MODEL=/app/model-cache
 ENV PORT=10000
