@@ -517,6 +517,39 @@ a:hover {
     font-weight: 600;
 }
 
+/* Hypothesis detail card — structured analysis output */
+.hypothesis-detail {
+    background: var(--color-muted-bg);
+    padding: 1.15rem 1.25rem;
+    border-radius: 8px;
+    font-size: 0.86rem;
+    line-height: 1.85;
+    color: var(--color-text);
+}
+.hypothesis-detail .hyp-section {
+    margin-bottom: 0.85rem;
+}
+.hypothesis-detail .hyp-section:last-child {
+    margin-bottom: 0;
+}
+.hypothesis-detail .hyp-heading {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--color-accent-dark);
+    letter-spacing: 0.03em;
+    margin-bottom: 0.25rem;
+    padding-bottom: 0.2rem;
+    border-bottom: 1px solid var(--color-border);
+}
+.hypothesis-detail .hyp-body {
+    color: var(--color-text);
+}
+.hypothesis-detail .hyp-metric {
+    font-weight: 600;
+    color: var(--color-accent-dark);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .site-nav .container {

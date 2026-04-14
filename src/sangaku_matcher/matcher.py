@@ -629,291 +629,272 @@ def _generate_exit_hypothesis(
                 return f"{'・'.join(axis_labels)}の{n_themes}テーマで接点。対話を通じた連携テーマの探索が見込まれる。"
             return f"テーマ幅{tb.value*100:.0f}%。異なる視点からの対話を通じた接点発見の余地あり。"
 
-    # ── Detailed mode: comprehensive hypothesis for top-ranked companies ──
-    if exit_type == "rd":
-        parts = []
-        # 1. Overview: what matching found
-        tech_themes = _extract_tech_themes(nf.rationale) or _extract_tech_themes(tp.rationale)
-        if tech_themes:
-            theme_str = "「" + "」「".join(tech_themes) + "」"
-            parts.append(
-                f"{company_name}は、有価証券報告書のテキスト分析から、"
-                f"{theme_str}といった技術テーマにおいて"
-                f"当該研究シーズとの高い親和性が確認されました（ニーズ適合度{nf.value*100:.0f}%、"
-                f"技術近接度{tp.value*100:.0f}%）。"
-                f"これらのスコアは、同社の有価証券報告書に記載された"
-                f"研究開発方針・技術課題と、入力された研究テーマの"
-                f"意味的類似度を多言語埋め込みモデルで算出したものです。"
-            )
-        else:
-            parts.append(
-                f"{company_name}は、有価証券報告書のテキスト分析から、"
-                f"当該研究シーズと関連性の高い技術課題を抱えていると推定されます"
-                f"（ニーズ適合度{nf.value*100:.0f}%、技術近接度{tp.value*100:.0f}%）。"
-                f"これらのスコアは、同社が開示する研究開発方針や事業リスクの記述と、"
-                f"入力された研究テーマとの意味的近さを定量化したものです。"
-            )
+    # ── Detailed mode: structured HTML with 4 expert agent perspectives ──
+    # Helper: wrap a section with heading
+    def _section(heading: str, body: str) -> str:
+        return (
+            f'<div class="hyp-section">'
+            f'<span class="hyp-heading">{heading}</span>'
+            f'<span class="hyp-body">{body}</span>'
+            f'</div>'
+        )
 
-        # 2. Absorptive capacity and past collaboration
+    def _metric(val: str) -> str:
+        return f'<span class="hyp-metric">{val}</span>'
+
+    # ── Agent 1: Technical Analyst (技術分析) ──
+    def _agent_tech(exit_type: str) -> str:
+        tech_themes = _extract_tech_themes(nf.rationale) or _extract_tech_themes(tp.rationale)
+        theme_names_a = _extract_theme_names(af.rationale)
+
+        if exit_type == "rd":
+            if tech_themes:
+                theme_str = "「" + "」「".join(tech_themes) + "」"
+                text = (
+                    f"{company_name}の有価証券報告書から、"
+                    f"{theme_str}の技術テーマで研究シーズとの高い親和性を検出しました"
+                    f"（ニーズ適合度{_metric(f'{nf.value*100:.0f}%')}、"
+                    f"技術近接度{_metric(f'{tp.value*100:.0f}%')}）。"
+                    f"これらは有報記載の研究開発方針と研究テーマの"
+                    f"意味的類似度を多言語埋め込みモデルで定量化した結果です。"
+                )
+            else:
+                text = (
+                    f"{company_name}は、研究シーズと関連性の高い技術課題を抱えています"
+                    f"（ニーズ適合度{_metric(f'{nf.value*100:.0f}%')}、"
+                    f"技術近接度{_metric(f'{tp.value*100:.0f}%')}）。"
+                    f"有報の研究開発方針・事業リスクの記述との意味的近さを定量化した結果です。"
+                )
+            # Synergy interpretation
+            sy = features.get("synergy", FeatureResult(0, ""))
+            if sy.value > 0.3:
+                text += (
+                    f" さらに、技術ニーズと社会課題の交差領域で"
+                    f"シナジー効果（{_metric(f'{sy.value*100:.0f}%')}）が確認されており、"
+                    f"単一の技術課題を超えた複合的な研究価値が見込まれます。"
+                )
+        elif exit_type == "new_domain":
+            if theme_names_a:
+                theme_str = "「" + "」「".join(theme_names_a) + "」"
+                text = (
+                    f"{company_name}は{theme_str}等の新事業領域への挑戦を"
+                    f"有価証券報告書で明示しています"
+                    f"（野心適合度{_metric(f'{af.value*100:.0f}%')}）。"
+                    f"このスコアは中期経営計画の方向性と"
+                    f"研究者の専門領域との整合度を示しています。"
+                )
+            else:
+                text = (
+                    f"{company_name}は新規事業領域の開拓を推進しています"
+                    f"（野心適合度{_metric(f'{af.value*100:.0f}%')}）。"
+                    f"中期経営計画から既存事業の延長にない"
+                    f"新たな価値創造への意欲が読み取れます。"
+                )
+            if hf.value > 0.2:
+                text += (
+                    f" 人文・社会科学との親和性も{_metric(f'{hf.value*100:.0f}%')}と高く、"
+                    f"Mode 2知識生産（Gibbons, 1994）の枠組みで、"
+                    f"社会的問題関心に根ざした学際的アプローチが可能です。"
+                    f"「なぜその事業が社会に必要か」の正当性構築に研究知見が貢献します。"
+                )
+        else:  # exploratory
+            by_ax: dict[str, list[str]] = {}
+            for m in cached_matching_themes[:10]:
+                al = {"humanities": "社会課題", "tech": "技術", "ambition": "新規事業"}.get(m.get("axis", ""), "")
+                if al:
+                    by_ax.setdefault(al, []).append(m["label"])
+            text = (
+                f"{company_name}とは{_metric(f'{len(by_ax)}軸')}にわたる"
+                f"対話の接点が見込まれます"
+                f"（テーマ幅{_metric(f'{tb.value*100:.0f}%')}）。"
+            )
+            for al, ns in by_ax.items():
+                dn = "「" + "」「".join(ns[:2]) + "」"
+                text += f"{al}では{dn}、"
+            text += (
+                f"などのテーマが挙げられます。"
+                f"テーマ幅スコアは、研究テーマと企業活動の接点の多様さを示し、"
+                f"対話の糸口が豊富であることを意味します。"
+            )
+            if hf.value > 0.2:
+                text += (
+                    f" 人文・社会科学の接点（{_metric(f'{hf.value*100:.0f}%')}）も確認されており、"
+                    f"技術者とは異なるレイヤーでの対話が可能です。"
+                )
+        return text
+
+    # ── Agent 2: Business Strategy Analyst (経営戦略分析) ──
+    def _agent_biz(exit_type: str) -> str:
+        parts = []
+        # Absorptive capacity
         if ac.value > 0.5 and pt.value > 0.2:
             parts.append(
-                f"同社のR&D投資水準は業界内で高く（吸収力スコア{ac.value*100:.0f}%）、"
-                f"大学・研究機関との共同研究実績も確認されています。"
-                f"これは、Cohen & Levinthal（1990）の吸収能力理論が示すように、"
-                f"外部知識を認識・吸収・活用する組織的能力が備わっていることを意味します。"
-                f"産学連携において、企業側の吸収能力の高さは"
-                f"研究成果の事業化確度を左右する最も重要な要因の一つです。"
+                f"R&D投資水準が高く（吸収力{_metric(f'{ac.value*100:.0f}%')}）、"
+                f"大学との共同研究実績もあり、外部知識の吸収・活用能力"
+                f"（Cohen & Levinthal, 1990）が整っています。"
+                f"研究成果の事業化確度が高い企業です。"
             )
         elif ac.value > 0.5:
             parts.append(
-                f"同社はR&D投資が活発で（吸収力スコア{ac.value*100:.0f}%）、"
-                f"外部の研究知見を事業に取り込む組織的な体制を持っています。"
-                f"ただし大学との連携実績は限定的であるため、初期段階では"
-                f"技術移転オフィス（TLO）や産学連携コーディネーターを介した"
-                f"段階的なアプローチが有効です。"
-                f"企業の技術部門に研究の価値を理解できる人材がいる場合、"
-                f"連携のハードルは大幅に下がります。"
+                f"R&D投資が活発で（吸収力{_metric(f'{ac.value*100:.0f}%')}）、"
+                f"外部知見の事業化体制を持っています。"
+                f"大学連携は限定的なため、TLOを介した段階的アプローチが有効です。"
             )
         elif pt.value > 0.2:
             parts.append(
-                f"同社は大学との連携実績があり、産学連携の進め方について"
-                f"一定の経験を有しています。一方でR&D投資の規模（{ac.value*100:.0f}%）から、"
-                f"受け入れ可能な研究のスコープについては事前に確認が必要です。"
-                f"連携実績のある企業は、共同研究の契約プロセスや"
-                f"知財の取り扱いに関する社内手続きが整備されていることが多く、"
-                f"スムーズな連携開始が期待できます。"
+                f"大学連携の実績があり（{_metric(f'past_ties {pt.value*100:.0f}%')}）、"
+                f"契約プロセスや知財手続きが整備済みの可能性が高いです。"
+                f"R&D規模（{ac.value*100:.0f}%）からスコープの事前確認を推奨します。"
             )
         else:
             parts.append(
-                f"同社のR&D投資水準（{ac.value*100:.0f}%）や大学連携実績は"
-                f"現時点では中程度ですが、技術ニーズとの適合度の高さは"
-                f"共同研究の動機づけとして十分な水準です。"
-                f"産学連携が初めての企業には、まず受託研究や技術コンサルティングなど"
-                f"比較的軽いスキームから関係を構築し、信頼醸成を経て"
-                f"共同研究に移行するアプローチが推奨されます。"
+                f"R&D投資（{_metric(f'{ac.value*100:.0f}%')}）は中程度ですが、"
+                f"テーマ適合度の高さが連携の動機づけになります。"
+                f"初期は受託研究など軽いスキームから関係構築するのが効果的です。"
             )
 
-        # 3. Open innovation readiness
+        # OI readiness
         if oi.value > 0.4:
             parts.append(
-                f"オープンイノベーションへの姿勢も積極的で（OIスコア{oi.value*100:.0f}%）、"
-                f"CVC（コーポレートベンチャーキャピタル）や"
-                f"アクセラレータープログラムなどの仕組みを通じて、"
-                f"外部との協業に対する組織的な受容性が高いと判断されます。"
+                f"OI体制が充実しており（{_metric(f'{oi.value*100:.0f}%')}）、"
+                f"CVC・アクセラレーター等を通じた外部協業の受容性が高いです。"
             )
         elif oi.value > 0.2:
             parts.append(
-                f"オープンイノベーションへの取り組みも確認されています（OIスコア{oi.value*100:.0f}%）。"
-                f"外部連携の窓口が明確な企業では、アプローチの初期段階が円滑に進みます。"
+                f"OIへの取り組みも確認されています（{_metric(f'{oi.value*100:.0f}%')}）。"
             )
 
-        # 4. Expected collaboration outcomes
-        parts.append(
-            f"【想定される連携成果】"
-            f"共同研究が実現した場合、共著論文の発表、"
-            f"特許の共同出願、プロトタイプの開発などが"
-            f"期待される成果です。"
-        )
-        if nf.value > 0.7:
+        # Mode 2 / humanities (for new_domain and exploratory)
+        if exit_type != "rd" and hf.value > 0.3:
             parts.append(
-                f"特にニーズ適合度の高さから、研究成果の"
-                f"実用化・事業化に直結する可能性が高いと評価されます。"
+                f"Gibbons（1994）のMode 2知識生産論の観点から、"
+                f"社会的文脈に根ざした学際的知見が事業の正当性構築に貢献します。"
             )
 
-        # 5. Expert recommendation on collaboration approach
-        parts.append(
-            f"【産学連携の観点から】"
-            f"共同研究の具体的なテーマ設定に向けては、"
-            f"まず企業側の技術担当者・研究開発部門との面談を通じて、"
-            f"有報に記載された課題の詳細と優先度を確認することを推奨します。"
-            f"初期段階ではNDA（秘密保持契約）締結後の技術ディスカッション（3〜6ヶ月）を経て、"
-            f"共同研究契約へ移行するのが一般的なプロセスです。"
-            f"知的財産の取り扱いについては、大学の知財ポリシーと"
-            f"企業側の秘密保持要件を早期に擦り合わせることが重要です。"
-            f"資金面では、企業からの受託研究費に加え、NEDO・JST等の"
-            f"マッチングファンドの活用も検討すべきです。"
-            f"特にJSTのA-STEPや産学共創プラットフォームは、"
-            f"このタイプの連携に適した支援制度です。"
-        )
+        # Future option
+        if fo.value > 0.3 and exit_type != "rd":
+            parts.append(
+                f"将来的なオプション価値（{_metric(f'{fo.value*100:.0f}%')}）も高く、"
+                f"中長期の知的資産蓄積の観点でも連携意義があります。"
+            )
+
         return "".join(parts)
 
-    elif exit_type == "new_domain":
-        theme_names = _extract_theme_names(af.rationale)
-        hum_role = _extract_humanities_role(af.rationale)
+    # ── Agent 3: Inflection Point Analyst (変化点分析) ──
+    def _agent_inflection(exit_type: str) -> str:
+        """Assess structural change dynamics around the collaboration domain.
 
+        Uses concepts from the Structural Inflection Scorer:
+        Scheffer (tipping points), Geels (MLP), Perez (tech revolutions),
+        North (institutional economics), Dixit-Pindyck (real options).
+        """
         parts = []
-        # 1. Company's ambition direction
-        if theme_names:
-            theme_str = "「" + "」「".join(theme_names) + "」"
-            parts.append(
-                f"{company_name}は、{theme_str}"
-                f"といった新しい事業領域への挑戦を"
-                f"有価証券報告書で明示しています（野心適合度{af.value*100:.0f}%）。"
-                f"このスコアは、同社が掲げる新規事業テーマ・中期経営計画の方向性と、"
-                f"研究者の専門領域との整合度を示しています。"
-            )
-        else:
-            parts.append(
-                f"{company_name}は、新たな事業領域の開拓に"
-                f"取り組む姿勢を有価証券報告書で示しています（野心適合度{af.value*100:.0f}%）。"
-                f"中期経営計画や事業戦略の記述から、既存事業の延長線上にない"
-                f"新たな価値創造への意欲が読み取れます。"
-            )
+        # Approximate inflection signals from available feature scores
+        # High future_option + high ambition_fit = landscape pressure / regime instability
+        # High open_inno = institutional readiness
+        # High need_fit + high tech_prox = technology deployment phase
 
-        # 2. How the researcher's expertise maps to the new domain
-        if hum_role:
-            parts.append(f"この新領域において、{hum_role}")
-        else:
-            parts.append(
-                f"こうした新領域への参入にあたっては、"
-                f"研究者の専門的知見が問いの設定や方向性の検討に貢献できる可能性があります。"
-                f"企業が新領域に進出する際、最大の課題は「正しい問いを立てること」であり、"
-                f"これは学術研究者が最も得意とする領域です。"
-            )
-
-        # 3. Humanities/social science value
-        if hf.value > 0.3:
-            parts.append(
-                f"さらに、人文・社会科学的な視点との親和性が高く（人文親和度{hf.value*100:.0f}%）、"
-                f"技術開発だけでは捉えきれない社会的文脈や利用者理解の側面で、"
-                f"研究者の知見が差別化要因となり得ます。"
-                f"Gibbonsら（1994）のMode 2知識生産論が示すように、"
-                f"社会的な問題関心に根ざした学際的アプローチは、"
-                f"新領域開拓において企業単独では得がたい視座を提供します。"
-                f"特に「なぜその事業が社会的に求められるのか」という"
-                f"正当性の構築において、人文・社会科学の知見は不可欠です。"
-            )
-        elif hf.value > 0.15:
-            parts.append(
-                f"人文・社会科学的な接点も一定程度確認されており（人文親和度{hf.value*100:.0f}%）、"
-                f"技術面だけでなく、社会的な文脈を踏まえた連携テーマの設計が可能です。"
-            )
-
-        # 4. OI readiness
-        if oi.value > 0.4:
-            parts.append(
-                f"同社はオープンイノベーション体制を整えており（OIスコア{oi.value*100:.0f}%）、"
-                f"外部の研究者との新領域探索に対して組織的な受容性が高いと考えられます。"
-                f"新規事業部門やイノベーション推進室がある企業では、"
-                f"従来の研究開発部門経由よりも迅速な連携が実現しやすいです。"
-            )
-        elif oi.value > 0.2:
-            parts.append(
-                f"オープンイノベーションの体制は発展途上ですが（{oi.value*100:.0f}%）、"
-                f"新事業開発部門を窓口とした連携の可能性はあります。"
-            )
-
-        # 5. Future option value
-        if fo.value > 0.3:
-            parts.append(
-                f"将来的なオプション価値も高く（{fo.value*100:.0f}%）、"
-                f"短期的な成果だけでなく、中長期的な知的資産の蓄積という"
-                f"観点でも連携の意義が見込まれます。"
-            )
-
-        # 6. Expert recommendation
-        parts.append(
-            f"【産学連携の観点から】"
-            f"新領域探索型の産学連携では、共同研究よりも先に"
-            f"アドバイザリー契約や共同ワークショップを通じた"
-            f"「問いの共同設計」から始めることが効果的です。"
-            f"研究者が企業の事業開発チームに伴走し、"
-            f"学術的な知見を事業仮説の構築に活かすモデルが推奨されます。"
-            f"具体的には、3〜6ヶ月の探索フェーズで複数の仮説を検証し、"
-            f"有望なテーマに絞り込んだ上で本格的な共同研究に移行する"
-            f"ステージゲート方式が成功確率を高めます。"
-            f"経産省の「未来社会創造事業」やJSTの"
-            f"「共創の場形成支援プログラム」なども活用できる可能性があります。"
-        )
+        if exit_type == "rd":
+            if nf.value > 0.7 and oi.value > 0.3:
+                parts.append(
+                    f"技術ニーズの高さとOI体制から、Geelsの多層的視座（MLP）における"
+                    f"「レジーム不安定化→ニッチ技術の浸透機会」が開いている状態と推察されます。"
+                    f"Perez理論でいう導入期から展開期への移行局面であれば、"
+                    f"産学連携による技術実装の効果が最大化するタイミングです。"
+                )
+            elif nf.value > 0.5:
+                parts.append(
+                    f"技術ニーズとの適合度から、当該領域は"
+                    f"既存技術の限界が顕在化しつつある段階（Scheffer理論の閾値接近）"
+                    f"と推察されます。代替技術への需要が高まる中、"
+                    f"研究シーズの事業化ウィンドウが開きつつあります。"
+                )
+            else:
+                parts.append(
+                    f"現時点では技術的な変化の閾値には距離がありますが、"
+                    f"Dixit-Pindyck理論の「待機オプション」として捉えれば、"
+                    f"今から関係構築を始めることで将来の変化点到来時に"
+                    f"先行者優位を確保できます。"
+                )
+        elif exit_type == "new_domain":
+            if af.value > 0.5 and fo.value > 0.3:
+                parts.append(
+                    f"企業の新領域参入意欲と将来オプション価値の高さは、"
+                    f"Geels理論における「ランドスケープ圧力による機会の窓」が"
+                    f"開いていることを示唆します。"
+                    f"North制度経済学の視点では、規制変更や基準策定が"
+                    f"新市場を創出する局面であり、連携のタイミングとして有望です。"
+                )
+            else:
+                parts.append(
+                    f"新事業領域はPerez理論の導入期にあると考えられ、"
+                    f"不確実性は高いものの、この段階での学術連携は"
+                    f"「問いの設定」段階から関与できる戦略的優位があります。"
+                    f"Dixit-Pindyck理論では不確実性が高い領域こそ"
+                    f"リアルオプションの価値が大きくなります。"
+                )
+        else:  # exploratory
+            if tb.value > 0.4 and hf.value > 0.2:
+                parts.append(
+                    f"多軸にわたる接点の存在は、Scheffer理論が示す"
+                    f"「複数の緩慢変数が同時に閾値に接近する」複合的変化の兆候と"
+                    f"解釈できます。Nooteboom（2007）の認知的距離理論によれば、"
+                    f"適度に異なる知識基盤間の対話が"
+                    f"最もイノベーティブな成果を生み出します。"
+                )
+            else:
+                parts.append(
+                    f"探索的段階にある領域は、Perez理論の導入期に相当し、"
+                    f"将来の変化点を先取りするための知的投資と位置づけられます。"
+                    f"Nooteboomの認知的距離理論では、異なる問題意識の交差が"
+                    f"セレンディピティの源泉となります。"
+                )
         return "".join(parts)
 
-    else:  # exploratory
-        n_themes = len(cached_matching_themes)
-        if n_themes > 0:
-            by_axis: dict[str, list[str]] = {}
-            for m in cached_matching_themes[:10]:
-                axis_label = {"humanities": "社会課題", "tech": "技術", "ambition": "新規事業"}.get(m.get("axis", ""), "")
-                if axis_label:
-                    by_axis.setdefault(axis_label, []).append(m["label"])
-
-            parts = []
-            # 1. Multi-axis overview
-            parts.append(
-                f"{company_name}とは、{len(by_axis)}つの軸にわたって"
-                f"対話の接点が見込まれます（テーマ幅スコア{tb.value*100:.0f}%）。"
-                f"テーマ幅スコアは、研究テーマが企業の活動と"
-                f"どれだけ多様な接点を持つかを測る指標で、"
-                f"値が高いほど対話の糸口が豊富であることを示します。"
+    # ── Agent 4: Collaboration Architect (連携設計) ──
+    def _agent_collab(exit_type: str) -> str:
+        if exit_type == "rd":
+            text = (
+                f"NDA締結後の技術ディスカッション（3〜6ヶ月）を経て"
+                f"共同研究契約へ移行するのが標準的です。"
+                f"知財は大学の知財ポリシーと企業側の秘密保持要件を"
+                f"早期に擦り合わせてください。"
+                f"資金面ではNEDO・JST等のマッチングファンド、"
+                f"特にA-STEPや産学共創プラットフォームの活用を推奨します。"
             )
-
-            # 2. Detail each axis
-            for axis_label, names in by_axis.items():
-                display_names = "「" + "」「".join(names[:3]) + "」"
-                parts.append(
-                    f"{axis_label}の観点では{display_names}などのテーマが挙げられます。"
+            if nf.value > 0.7:
+                text += (
+                    f" ニーズ適合度の高さから、共著論文・共同特許・"
+                    f"プロトタイプ開発など実用化直結型の成果が期待されます。"
                 )
-
-            # 3. Cognitive distance argument
-            parts.append(
-                f"Nooteboom（2007）の認知的距離理論によれば、"
-                f"適度に異なる知識基盤を持つパートナー間の対話は、"
-                f"既存の枠組みでは生まれにくい新しい着想を促します。"
-                f"同社との連携は、技術的な近さよりもむしろ、"
-                f"異なる問題意識の交差によるセレンディピティが期待される関係です。"
-                f"産学連携の研究では、探索的な対話から始まった関係が、"
-                f"最も革新的な成果につながった事例が複数報告されています。"
+        elif exit_type == "new_domain":
+            text = (
+                f"共同研究よりも先に、アドバイザリー契約や"
+                f"共同ワークショップによる「問いの共同設計」から始めてください。"
+                f"3〜6ヶ月の探索フェーズ→ステージゲートで本格研究へ移行する"
+                f"方式が成功確率を高めます。"
+                f"JSTの「共創の場形成支援プログラム」や"
+                f"経産省の関連事業も活用できる可能性があります。"
             )
-
-            # 4. Humanities fit
-            if hf.value > 0.3:
-                parts.append(
-                    f"人文・社会科学的なテーマへの関心も確認されており"
-                    f"（人文親和度{hf.value*100:.0f}%）、"
-                    f"技術者とは異なるレイヤーでの対話が可能です。"
-                    f"ESG経営やサステナビリティが経営課題となる中、"
-                    f"人文・社会科学の視点を持つ研究者との対話は"
-                    f"企業にとっても戦略的な意義があります。"
-                )
-            elif hf.value > 0.15:
-                parts.append(
-                    f"人文・社会科学的な接点も一定程度あり（人文親和度{hf.value*100:.0f}%）、"
-                    f"技術面に限定されない幅広い対話が見込まれます。"
-                )
-
-            # 5. OI readiness
-            if oi.value > 0.3:
-                parts.append(
-                    f"同社はオープンイノベーションへの取り組みも確認されており（{oi.value*100:.0f}%）、"
-                    f"外部との非定型な対話に対する受容性があると考えられます。"
-                )
-
-            # 6. Expert recommendation
-            parts.append(
-                f"【産学連携の観点から】"
-                f"探索的対話段階では、形式的な共同研究契約を結ぶ前に、"
-                f"まずカジュアルな意見交換やセミナー登壇・ワークショップの"
-                f"共同開催を通じて相互理解を深めることが効果的です。"
-                f"産学連携コーディネーターやURA（リサーチ・アドミニストレーター）を介した"
-                f"マッチングイベントの活用も推奨されます。"
-                f"この段階で重要なのは、双方が「何を知らないか」を共有することであり、"
-                f"そこから予想外の連携テーマが生まれるケースは少なくありません。"
-                f"大学のオープンイノベーション機構や、"
-                f"地域の産学連携支援機関を通じたファシリテーションも有効です。"
-            )
-            return "".join(parts)
         else:
-            return (
-                f"{company_name}とは、直接的なテーマの重なりは限られますが、"
-                f"異なる視点からの対話を通じて、新たな連携の接点が"
-                f"見つかる可能性があります。"
-                f"認知的に遠い分野間の対話がイノベーションの源泉となるケースは、"
-                f"産学連携の歴史において多く報告されています。"
-                f"まずは業界の課題感や将来ビジョンについて"
-                f"カジュアルな意見交換から始め、双方の関心の重なりを"
-                f"探索することを推奨します。"
-                f"産学連携コーディネーターやURAの仲介を通じた"
-                f"初期接点の設定が効果的です。"
+            text = (
+                f"まずセミナー登壇・ワークショップの共同開催など"
+                f"カジュアルな接点から開始してください。"
+                f"URA（リサーチ・アドミニストレーター）や"
+                f"産学連携コーディネーターを介したマッチングイベントも有効です。"
+                f"双方が「何を知らないか」を共有することで、"
+                f"予想外の連携テーマが生まれるケースは少なくありません。"
             )
+        return text
+
+    # ── Assemble structured HTML ──
+    sections = [
+        _section("技術分析", _agent_tech(exit_type)),
+        _section("経営戦略分析", _agent_biz(exit_type)),
+        _section("変化点分析", _agent_inflection(exit_type)),
+        _section("連携設計", _agent_collab(exit_type)),
+    ]
+    return "\n".join(sections)
 
 
 def _mmr_rerank(
