@@ -523,25 +523,30 @@ async def guide_page(request: Request):
 @app.get("/database", response_class=HTMLResponse)
 async def database_page(request: Request):
     """Display the database overview page."""
-    with connect(settings.matcher_db_path) as conn:
-        stats = {}
-        for table, key in [
-            ("companies", "companies"), ("seeds", "seeds"),
-            ("matches", "matches"), ("multi_exit_matches", "multi_exit_matches"),
-            ("collaborations", "collaborations"),
-            ("tech_taxonomy_themes", "tech_themes"),
-            ("taxonomy_themes", "social_themes"),
-            ("ambition_taxonomy_themes", "ambition_themes"),
-            ("tech_taxonomy_proximity", "tech_proximity"),
-            ("company_taxonomy_proximity", "social_proximity"),
-            ("ambition_taxonomy_proximity", "ambition_proximity"),
-            ("industry_stats", "industry_stats"),
-        ]:
-            try:
-                row = conn.execute(f"SELECT COUNT(*) as c FROM [{table}]").fetchone()
-                stats[key] = f"{row['c']:,}"
-            except Exception:
-                stats[key] = "N/A"
+    try:
+        with connect(settings.matcher_db_path) as conn:
+            stats = {}
+            for table, key in [
+                ("companies", "companies"), ("seeds", "seeds"),
+                ("matches", "matches"), ("multi_exit_matches", "multi_exit_matches"),
+                ("collaborations", "collaborations"),
+                ("tech_taxonomy_themes", "tech_themes"),
+                ("taxonomy_themes", "social_themes"),
+                ("ambition_taxonomy_themes", "ambition_themes"),
+                ("tech_taxonomy_proximity", "tech_proximity"),
+                ("company_taxonomy_proximity", "social_proximity"),
+                ("ambition_taxonomy_proximity", "ambition_proximity"),
+                ("industry_stats", "industry_stats"),
+            ]:
+                try:
+                    row = conn.execute(f"SELECT COUNT(*) as c FROM [{table}]").fetchone()
+                    stats[key] = f"{row['c']:,}"
+                except Exception:
+                    stats[key] = "N/A"
+    except Exception:
+        stats = {k: "N/A" for k in ["companies", "seeds", "matches", "multi_exit_matches",
+                 "collaborations", "tech_themes", "social_themes", "ambition_themes",
+                 "tech_proximity", "social_proximity", "ambition_proximity", "industry_stats"]}
     return templates.TemplateResponse(request, "database.html", {"stats": stats})
 
 
@@ -809,16 +814,19 @@ async def companies_page(
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-    with connect(settings.matcher_db_path) as conn:
-        total = conn.execute(f"SELECT COUNT(*) as c FROM companies {where}", params).fetchone()["c"]
-        rows = conn.execute(
-            f"SELECT edinet_code, sec_code, name, industry, revenue, rd_expense, rd_intensity "
-            f"FROM companies {where} ORDER BY {sort} {order_sql} LIMIT ? OFFSET ?",
-            params + [per_page, offset],
-        ).fetchall()
-        industries = conn.execute(
-            "SELECT DISTINCT industry FROM companies WHERE industry IS NOT NULL ORDER BY industry"
-        ).fetchall()
+    try:
+        with connect(settings.matcher_db_path) as conn:
+            total = conn.execute(f"SELECT COUNT(*) as c FROM companies {where}", params).fetchone()["c"]
+            rows = conn.execute(
+                f"SELECT edinet_code, sec_code, name, industry, revenue, rd_expense, rd_intensity "
+                f"FROM companies {where} ORDER BY {sort} {order_sql} LIMIT ? OFFSET ?",
+                params + [per_page, offset],
+            ).fetchall()
+            industries = conn.execute(
+                "SELECT DISTINCT industry FROM companies WHERE industry IS NOT NULL ORDER BY industry"
+            ).fetchall()
+    except Exception:
+        total, rows, industries = 0, [], []
 
     total_pages = max(1, math.ceil(total / per_page))
     return templates.TemplateResponse(request, "companies.html", {
