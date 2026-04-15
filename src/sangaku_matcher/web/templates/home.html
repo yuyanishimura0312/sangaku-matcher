@@ -2,6 +2,7 @@
 {% block title %}sangaku-matcher -- AI解析{% endblock %}
 {% block content %}
 <div class="hero-input">
+    <p class="subheading">AI-Powered University-Industry Matching</p>
     <h2>研究者と企業の連携仮説を構築</h2>
     <p class="text-muted">研究テーマを入力すると、{{ company_count }}社のデータベースから122テーマ（技術49・社会33・野心40）を横断的に分析し、連携の仮説を構築します。</p>
 
@@ -40,12 +41,24 @@
         </ul>
     </div>
 
-    <div id="info-block" style="margin-top:1.5rem;padding:1rem;background:var(--color-muted-bg);border-radius:8px">
-        <p style="font-size:0.88rem;color:var(--color-text-muted);margin:0;line-height:1.7">
-            <strong>3軸122テーマによるマッチング:</strong>
-            有価証券報告書のテキストをGTAに着想を得たボトムアップ分析で構造化した3つのテーマ体系を使い、研究テーマとの多角的な連携仮説を構築します。
-            技術的接点だけでなく、企業の新規事業野心や社会的課題への関心も含めた「なぜ連携すべきか」の仮説を提示します。
-            <a href="/themes" style="color:var(--color-accent)">テーマ体系の詳細</a>
+    <div id="info-block" class="info-block fade-in">
+        <div class="info-block-grid">
+            <div class="info-block-item">
+                <div class="info-block-number">49</div>
+                <div class="info-block-label">技術テーマ</div>
+            </div>
+            <div class="info-block-item">
+                <div class="info-block-number">33</div>
+                <div class="info-block-label">社会課題テーマ</div>
+            </div>
+            <div class="info-block-item">
+                <div class="info-block-number">40</div>
+                <div class="info-block-label">野心テーマ</div>
+            </div>
+        </div>
+        <p class="info-block-desc">
+            有価証券報告書をGTA的ボトムアップ分析で構造化した3軸テーマ体系で、「なぜ連携すべきか」の仮説を構築します。
+            <a href="/themes">テーマ体系の詳細</a>
         </p>
     </div>
 </div>

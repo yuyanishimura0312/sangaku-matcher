@@ -37,7 +37,48 @@
         {% block content %}{% endblock %}
     </main>
     <footer class="site-footer" role="contentinfo">
-        <p>sangaku-matcher v0.1 by Miratuku Lab -- AIによるマッチング結果は仮説です。最終的な連携判断は専門家の評価を経て行ってください。</p>
+        <div class="footer-inner">
+            <div class="footer-brand">
+                <span class="footer-brand-name">sangaku-matcher</span>
+                <span class="footer-brand-version">v0.1</span>
+            </div>
+            <p>AIによるマッチング結果は仮説です。最終的な連携判断は専門家の評価を経て行ってください。</p>
+            <div class="footer-links">
+                <a href="/guide">使い方ガイド</a>
+                <a href="/database">データベース概要</a>
+                <a href="/themes">テーマ体系</a>
+            </div>
+            <p class="footer-credit">Miratuku Lab</p>
+        </div>
     </footer>
+    <script>
+    (function(){
+        /* Sticky nav shadow on scroll */
+        var nav=document.querySelector('.site-nav');
+        if(nav){
+            var onScroll=function(){
+                if(window.scrollY>8) nav.classList.add('scrolled');
+                else nav.classList.remove('scrolled');
+            };
+            window.addEventListener('scroll',onScroll,{passive:true});
+            onScroll();
+        }
+        /* Scroll-triggered fade-in */
+        var els=document.querySelectorAll('.fade-in');
+        if(els.length&&'IntersectionObserver' in window){
+            var obs=new IntersectionObserver(function(entries){
+                entries.forEach(function(e){
+                    if(e.isIntersecting){
+                        e.target.classList.add('visible');
+                        obs.unobserve(e.target);
+                    }
+                });
+            },{threshold:0.1,rootMargin:'0px 0px -40px 0px'});
+            els.forEach(function(el){obs.observe(el);});
+        } else {
+            els.forEach(function(el){el.classList.add('visible');});
+        }
+    })();
+    </script>
 </body>
 </html>
