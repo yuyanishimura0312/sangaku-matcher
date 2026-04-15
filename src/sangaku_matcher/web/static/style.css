@@ -1071,3 +1071,167 @@ a:hover {
         grid-template-columns: 1fr;
     }
 }
+
+/* ===== INTERACTION ENHANCEMENTS (v2) ===== */
+
+/* Hero background texture — subtle dot pattern */
+.hero-input::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+        radial-gradient(circle at 1px 1px, rgba(168,107,80,0.06) 1px, transparent 0);
+    background-size: 28px 28px;
+    mask-image: radial-gradient(ellipse 60% 50% at 50% 30%, black 0%, transparent 100%);
+    -webkit-mask-image: radial-gradient(ellipse 60% 50% at 50% 30%, black 0%, transparent 100%);
+    pointer-events: none;
+    z-index: -1;
+}
+
+/* Hero radial glow */
+.hero-input::after {
+    content: "";
+    position: fixed;
+    top: -15%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 900px;
+    height: 400px;
+    background: radial-gradient(ellipse, rgba(168,107,80,0.08) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: -1;
+}
+
+/* Textarea focus expansion */
+textarea#description {
+    transition:
+        border-color var(--duration-normal) var(--ease-out),
+        box-shadow var(--duration-normal) var(--ease-out),
+        min-height 350ms var(--ease-spring);
+    min-height: 150px;
+}
+textarea#description:focus {
+    min-height: 220px;
+}
+
+/* Smooth accordion animation */
+.exit-body {
+    overflow: hidden;
+    max-height: 5000px;
+    transition: max-height var(--duration-slow) cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 300ms ease;
+    opacity: 1;
+}
+.exit-body.collapsed {
+    max-height: 0;
+    opacity: 0;
+}
+.more-body {
+    overflow: hidden;
+    max-height: 8000px;
+    transition: max-height 350ms cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 250ms ease;
+    opacity: 1;
+}
+.more-body.collapsed {
+    max-height: 0;
+    opacity: 0;
+}
+
+/* Enhanced table row hover — accent border line */
+.table tbody tr {
+    position: relative;
+}
+.table tbody tr::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--color-accent);
+    transform: scaleY(0);
+    transition: transform var(--duration-fast) var(--ease-out);
+    border-radius: 0 2px 2px 0;
+}
+.table tbody tr:hover::before {
+    transform: scaleY(1);
+}
+
+/* Button ripple effect */
+.btn {
+    position: relative;
+    overflow: hidden;
+}
+.btn .ripple {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    transform: scale(0);
+    animation: ripple-expand 500ms linear;
+    pointer-events: none;
+}
+@keyframes ripple-expand {
+    to {
+        transform: scale(4);
+        opacity: 0;
+    }
+}
+
+/* Hamburger → X morphing */
+.nav-toggle span {
+    transform-origin: center;
+    transition: transform var(--duration-normal) var(--ease-out),
+                opacity 200ms ease;
+}
+.nav-toggle[aria-expanded="true"] span:nth-child(1) {
+    transform: translateY(7px) rotate(45deg);
+}
+.nav-toggle[aria-expanded="true"] span:nth-child(2) {
+    opacity: 0;
+    transform: scaleX(0);
+}
+.nav-toggle[aria-expanded="true"] span:nth-child(3) {
+    transform: translateY(-7px) rotate(-45deg);
+}
+
+/* View Transitions API */
+@view-transition {
+    navigation: auto;
+}
+::view-transition-old(root) {
+    animation: vt-fade-out 120ms ease forwards;
+}
+::view-transition-new(root) {
+    animation: vt-fade-in 180ms ease 80ms both;
+}
+@keyframes vt-fade-out {
+    to { opacity: 0; }
+}
+@keyframes vt-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Exit route color coding */
+.exit-accent-rd { border-left: 4px solid var(--color-success); }
+.exit-accent-new { border-left: 4px solid #2B6CB0; }
+.exit-accent-exploratory { border-left: 4px solid #7C3D9A; }
+
+/* Rank badge gold/silver/bronze */
+.rank-gold { background: linear-gradient(135deg, #C9A227, #A07820); color: #fff; box-shadow: 0 2px 6px rgba(201,162,39,0.35); }
+.rank-silver { background: linear-gradient(135deg, #A0A8B0, #7A8390); color: #fff; }
+.rank-bronze { background: linear-gradient(135deg, #C07840, #966030); color: #fff; }
+
+/* Accessibility: respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    .fade-in, .exit-body, .more-body, textarea#description {
+        transition: none;
+    }
+    .fade-in { opacity: 1; transform: none; }
+    * {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+    }
+}
