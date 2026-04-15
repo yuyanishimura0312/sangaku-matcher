@@ -37,10 +37,12 @@ RUN apt-get purge -y gcc g++ && apt-get autoremove -y && \
 RUN useradd -m -u 1001 appuser
 
 # Download large DB from GitHub Release (avoids LFS budget issues)
+# chmod 666 ensures WAL mode can create -wal/-shm files even under appuser
 RUN mkdir -p data && \
     apt-get update && apt-get install -y --no-install-recommends curl && \
     curl -L -o data/matcher.db \
     https://github.com/yuyanishimura0312/sangaku-matcher/releases/download/v0.1.0-data/matcher.db && \
+    chmod 666 data/matcher.db && \
     apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 # Copy data files

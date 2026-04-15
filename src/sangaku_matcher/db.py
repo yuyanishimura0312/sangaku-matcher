@@ -146,9 +146,16 @@ def connect(db_path: Path) -> Iterator[sqlite3.Connection]:
     """Yield a connection with Row factory, auto-commit on success."""
     conn = sqlite3.connect(db_path, timeout=10)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
+    # Try WAL mode but fall back gracefully if filesystem is read-only
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.OperationalError:
+        pass
     try:
         yield conn
-        conn.commit()
+        try:
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # Read-only DB: skip commit
     finally:
         conn.close()
