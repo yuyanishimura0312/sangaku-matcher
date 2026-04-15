@@ -42,15 +42,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-XSS-Protection"] = "1; mode=block"
         # Limit referrer info sent to third parties
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        # CSP: no external CDN used, so 'self' only.
+        # CSP: allow Bootstrap CDN and Google Fonts alongside local assets.
         # 'unsafe-inline' is required for inline <script> blocks (generateDetail)
         # and inline <style> attributes used in templates.
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
             "img-src 'self' data:; "
-            "font-src 'self'"
+            "font-src 'self' https://fonts.gstatic.com"
         )
         # HSTS: enforce HTTPS for 1 year (takes effect only over HTTPS)
         response.headers["Strict-Transport-Security"] = (
