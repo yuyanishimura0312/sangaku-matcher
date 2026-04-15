@@ -1,6 +1,6 @@
 .env
-# Track matcher.db for deployment (pre-computed embeddings)
-!data/matcher.db
+# matcher.db is downloaded from GitHub Releases during Docker build
+data/matcher.db
 data/*.db-journal
 data/embeddings/
 logs/

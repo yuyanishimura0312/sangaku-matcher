@@ -36,8 +36,13 @@ RUN apt-get purge -y gcc g++ && apt-get autoremove -y && \
 # Create non-root user before copying app files
 RUN useradd -m -u 1001 appuser
 
+# Download large DB from GitHub Release (avoids LFS budget issues)
+RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+    curl -L -o data/matcher.db \
+    https://github.com/yuyanishimura0312/sangaku-matcher/releases/download/v0.1.0-data/matcher.db && \
+    apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+
 # Copy data files
-COPY data/matcher.db data/matcher.db
 COPY data/theme_taxonomy.json data/theme_taxonomy.json
 COPY data/tech_taxonomy.json data/tech_taxonomy.json
 COPY data/ambition_taxonomy.json data/ambition_taxonomy.json
