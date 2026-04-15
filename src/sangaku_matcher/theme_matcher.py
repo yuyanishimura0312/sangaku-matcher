@@ -54,8 +54,19 @@ class MatchResult:
     theme_count: int = 0
 
 
+_ALLOWED_TABLES = frozenset({
+    "taxonomy_themes", "company_taxonomy_proximity",
+    "tech_taxonomy_themes", "tech_taxonomy_proximity",
+    "ambition_taxonomy_themes", "ambition_taxonomy_proximity",
+})
+
+
 def _load_axis_data(conn, themes_table: str, proximity_table: str) -> tuple[list[dict], dict, dict]:
     """Load theme centroids, company proximities, and per-theme stats for one axis."""
+    # Validate table names against whitelist to prevent SQL injection
+    if themes_table not in _ALLOWED_TABLES or proximity_table not in _ALLOWED_TABLES:
+        raise ValueError(f"Invalid table name: {themes_table} or {proximity_table}")
+
     tables = {r["name"] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table'"
     )}

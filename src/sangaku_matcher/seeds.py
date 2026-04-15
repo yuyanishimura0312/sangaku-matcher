@@ -45,6 +45,14 @@ def parse_seed(
         cut = description[:MAX_CHARS].rfind("。")
         description = description[: cut + 1] if cut > 0 else description[:MAX_CHARS]
 
+    # Validate and truncate optional fields
+    if title and len(title) > 200:
+        title = title[:200]
+    if doi and len(doi) > 100:
+        doi = None
+    if patent_no and len(patent_no) > 30:
+        patent_no = None
+
     source_type = "text"
     if doi and patent_no:
         source_type = "mixed"

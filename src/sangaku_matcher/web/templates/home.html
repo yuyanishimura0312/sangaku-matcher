@@ -19,7 +19,8 @@
                   placeholder="研究テーマの概要を入力してください&#10;&#10;例1: デザイン人類学的手法による組織文化の理解と社会課題解決。フィールドワークを通じた暗黙知の可視化と組織変革への応用。&#10;&#10;例2: 酸化チタン系光触媒を用いた水処理技術。従来手法と比較して触媒効率が3倍向上し、産業排水処理への応用が期待される。&#10;&#10;例3: AIの意思決定プロセスにおける公正性と説明可能性の研究。アルゴリズムバイアスの検出手法と社会実装ガイドライン策定。"
                   required minlength="10"
                   aria-label="研究テーマの説明"></textarea>
-        <button type="submit" class="btn btn-primary btn-lg w-100 mt-3" id="submit-btn">仮説を構築</button>
+        <div class="char-counter" id="charCounter" aria-live="polite">0文字（10文字以上で入力してください）</div>
+        <button type="submit" class="btn btn-primary btn-lg w-100 mt-3" id="submit-btn" disabled>仮説を構築</button>
     </form>
 
     {# Loading animation (hidden by default, shown on submit) #}
@@ -72,6 +73,16 @@
             }
         }, 4000);
     }
+
+    var ta = document.getElementById('description');
+    var counter = document.getElementById('charCounter');
+    var btn = document.getElementById('submit-btn');
+    ta.addEventListener('input', function() {
+        var len = ta.value.length;
+        counter.textContent = len + '\u6587\u5b57' + (len < 10 ? '\uff0810\u6587\u5b57\u4ee5\u4e0a\u3067\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\uff09' : '');
+        counter.className = 'char-counter' + (len > 0 && len < 10 ? ' over-limit' : '');
+        btn.disabled = len < 10;
+    });
 
     document.getElementById('hypothesis-form').addEventListener('submit', function() {
         const btn = document.getElementById('submit-btn');

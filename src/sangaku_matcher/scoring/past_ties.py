@@ -65,7 +65,8 @@ class PastTiesScorer:
             if isinstance(c, dict) and c.get("last_year"):
                 last_years.append(c["last_year"])
         max_last_year = max(last_years) if last_years else 0
-        current_year = 2026
+        from datetime import datetime
+        current_year = datetime.now().year
         if max_last_year > 0:
             recency = max(0.0, 1.0 - (current_year - max_last_year) / 10)
         else:

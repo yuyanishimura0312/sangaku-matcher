@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}ページが見つかりません -- sangaku-matcher{% endblock %}
+{% block content %}
+<div class="empty-state">
+    <div class="empty-icon">404</div>
+    <div class="empty-title">ページが見つかりません</div>
+    <div class="empty-desc">お探しのページは存在しないか、削除された可能性があります。</div>
+    <div style="margin-top:1.5rem;display:flex;gap:1rem;justify-content:center;flex-wrap:wrap">
+        <a href="/" class="btn btn-primary">AI解析へ</a>
+        <a href="/results" class="btn" style="border:1px solid var(--color-border);color:var(--color-text)">結果一覧へ</a>
+    </div>
+</div>
+{% endblock %}

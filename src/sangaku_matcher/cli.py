@@ -133,12 +133,14 @@ def serve() -> None:
     """Start the web UI server."""
     import uvicorn
 
+    # Only enable hot-reload for local development
+    is_dev = settings.host in ("127.0.0.1", "localhost")
     click.echo(f"Starting web UI at http://{settings.host}:{settings.port}")
     uvicorn.run(
         "sangaku_matcher.web.app:app",
         host=settings.host,
         port=settings.port,
-        reload=True,
+        reload=is_dev,
     )
 
 

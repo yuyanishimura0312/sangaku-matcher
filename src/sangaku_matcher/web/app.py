@@ -64,6 +64,49 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
+# Safe HTML filter: whitelist only hypothesis-related tags/classes
+import re as _re_safe
+_SAFE_TAGS = {"div", "span", "p", "br", "strong", "em"}
+_SAFE_ATTRS = {"class"}
+_SAFE_CLASSES = {
+    "hyp-section", "hyp-heading", "hyp-body", "hyp-metric",
+    "hyp-label", "hyp-value", "hyp-insight",
+}
+_TAG_RE = _re_safe.compile(r"<(/?)(\w+)([^>]*)>")
+_ATTR_RE = _re_safe.compile(r'(\w+)\s*=\s*"([^"]*)"')
+
+
+def _sanitize_hypothesis_html(html_str: str) -> str:
+    """Sanitize HTML to only allow hypothesis-related tags and classes."""
+    import html as _html
+
+    def _replace_tag(m):
+        closing, tag, attrs_str = m.group(1), m.group(2).lower(), m.group(3)
+        if tag not in _SAFE_TAGS:
+            return _html.escape(m.group(0))
+        if closing:
+            return f"</{tag}>"
+        safe_attrs = []
+        for am in _ATTR_RE.finditer(attrs_str):
+            attr_name, attr_val = am.group(1).lower(), am.group(2)
+            if attr_name in _SAFE_ATTRS:
+                # Only allow whitelisted class names
+                if attr_name == "class":
+                    classes = [c for c in attr_val.split() if c in _SAFE_CLASSES]
+                    if classes:
+                        safe_attrs.append(f'class="{" ".join(classes)}"')
+                else:
+                    safe_attrs.append(f'{attr_name}="{_html.escape(attr_val)}"')
+        attr_str = (" " + " ".join(safe_attrs)) if safe_attrs else ""
+        return f"<{tag}{attr_str}>"
+
+    return _TAG_RE.sub(_replace_tag, html_str)
+
+
+from markupsafe import Markup
+
+templates.env.filters["safe_hypothesis"] = lambda s: Markup(_sanitize_hypothesis_html(s)) if s else ""
+
 
 def _company_count() -> int:
     try:
@@ -354,7 +397,7 @@ async def result_page(request: Request, seed_id: str):
     # Fall back to legacy single-ranking
     seed, result = _load_match_result(seed_id)
     if seed is None:
-        return HTMLResponse("Seed not found", status_code=404)
+        return templates.TemplateResponse(request, "404.html", status_code=404)
 
     return templates.TemplateResponse(request, "result.html", {
         "result": result,
@@ -381,6 +424,7 @@ async def download_result(seed_id: str, fmt: str):
 
 @app.get("/results", response_class=HTMLResponse)
 async def results_list(request: Request, page: int = 1):
+    page = max(1, page)
     per_page = 20
     offset = (page - 1) * per_page
     with connect(settings.matcher_db_path) as conn:
@@ -511,6 +555,7 @@ async def needs_page(
     view: str = "dashboard",
     page: int = 1,
 ):
+    page = max(1, page)
     per_page = 30 if view == "list" else 500
     offset = (page - 1) * per_page if view == "list" else 0
     allowed_sorts = {"name", "rd_expense", "rd_intensity"}
@@ -745,6 +790,7 @@ async def companies_page(
     order: str = "desc",
     page: int = 1,
 ):
+    page = max(1, page)
     per_page = 50
     offset = (page - 1) * per_page
     allowed_sorts = {"name", "industry", "revenue", "rd_expense", "rd_intensity"}
@@ -787,7 +833,7 @@ async def company_detail(request: Request, edinet_code: str):
     with connect(settings.matcher_db_path) as conn:
         co = conn.execute("SELECT * FROM companies WHERE edinet_code = ?", (edinet_code,)).fetchone()
         if not co:
-            return HTMLResponse("Company not found", status_code=404)
+            return templates.TemplateResponse(request, "404.html", status_code=404)
         collabs = conn.execute(
             "SELECT * FROM collaborations WHERE edinet_code = ? ORDER BY count DESC",
             (edinet_code,),
