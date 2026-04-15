@@ -427,52 +427,55 @@ async def results_list(request: Request, page: int = 1):
     page = max(1, page)
     per_page = 20
     offset = (page - 1) * per_page
-    with connect(settings.matcher_db_path) as conn:
-        # Check if multi_exit_matches table exists
-        has_mex = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='multi_exit_matches'"
-        ).fetchone() is not None
+    try:
+        with connect(settings.matcher_db_path) as conn:
+            # Check if multi_exit_matches table exists
+            has_mex = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='multi_exit_matches'"
+            ).fetchone() is not None
 
-        # Count total seeds that have any match results (legacy or multi-exit)
-        if has_mex:
-            total = conn.execute(
-                """SELECT COUNT(DISTINCT s.seed_id) as c FROM seeds s
-                   WHERE EXISTS (SELECT 1 FROM matches WHERE seed_id = s.seed_id)
-                      OR EXISTS (SELECT 1 FROM multi_exit_matches WHERE seed_id = s.seed_id)"""
-            ).fetchone()["c"]
+            # Count total seeds that have any match results (legacy or multi-exit)
+            if has_mex:
+                total = conn.execute(
+                    """SELECT COUNT(DISTINCT s.seed_id) as c FROM seeds s
+                       WHERE EXISTS (SELECT 1 FROM matches WHERE seed_id = s.seed_id)
+                          OR EXISTS (SELECT 1 FROM multi_exit_matches WHERE seed_id = s.seed_id)"""
+                ).fetchone()["c"]
 
-            rows = conn.execute(
-                """SELECT s.seed_id, s.title, s.created_at,
-                          COALESCE(
-                              (SELECT COUNT(*) FROM multi_exit_matches WHERE seed_id = s.seed_id),
-                              0
-                          ) + COALESCE(
-                              (SELECT COUNT(*) FROM matches WHERE seed_id = s.seed_id),
-                              0
-                          ) as match_count,
-                          COALESCE(
-                              (SELECT MAX(total_score) FROM multi_exit_matches WHERE seed_id = s.seed_id),
-                              (SELECT MAX(total_score) FROM matches WHERE seed_id = s.seed_id)
-                          ) as top_score,
-                          CASE WHEN EXISTS (SELECT 1 FROM multi_exit_matches WHERE seed_id = s.seed_id)
-                               THEN 1 ELSE 0 END as is_multi_exit
-                   FROM seeds s
-                   WHERE EXISTS (SELECT 1 FROM matches WHERE seed_id = s.seed_id)
-                      OR EXISTS (SELECT 1 FROM multi_exit_matches WHERE seed_id = s.seed_id)
-                   ORDER BY s.created_at DESC
-                   LIMIT ? OFFSET ?""",
-                (per_page, offset),
-            ).fetchall()
-        else:
-            total = conn.execute("SELECT COUNT(DISTINCT seed_id) as c FROM matches").fetchone()["c"]
-            rows = conn.execute(
-                """SELECT s.seed_id, s.title, s.created_at, COUNT(m.match_id) as match_count,
-                          MAX(m.total_score) as top_score, 0 as is_multi_exit
-                   FROM seeds s LEFT JOIN matches m ON s.seed_id = m.seed_id
-                   GROUP BY s.seed_id ORDER BY s.created_at DESC
-                   LIMIT ? OFFSET ?""",
-                (per_page, offset),
-            ).fetchall()
+                rows = conn.execute(
+                    """SELECT s.seed_id, s.title, s.created_at,
+                              COALESCE(
+                                  (SELECT COUNT(*) FROM multi_exit_matches WHERE seed_id = s.seed_id),
+                                  0
+                              ) + COALESCE(
+                                  (SELECT COUNT(*) FROM matches WHERE seed_id = s.seed_id),
+                                  0
+                              ) as match_count,
+                              COALESCE(
+                                  (SELECT MAX(total_score) FROM multi_exit_matches WHERE seed_id = s.seed_id),
+                                  (SELECT MAX(total_score) FROM matches WHERE seed_id = s.seed_id)
+                              ) as top_score,
+                              CASE WHEN EXISTS (SELECT 1 FROM multi_exit_matches WHERE seed_id = s.seed_id)
+                                   THEN 1 ELSE 0 END as is_multi_exit
+                       FROM seeds s
+                       WHERE EXISTS (SELECT 1 FROM matches WHERE seed_id = s.seed_id)
+                          OR EXISTS (SELECT 1 FROM multi_exit_matches WHERE seed_id = s.seed_id)
+                       ORDER BY s.created_at DESC
+                       LIMIT ? OFFSET ?""",
+                    (per_page, offset),
+                ).fetchall()
+            else:
+                total = conn.execute("SELECT COUNT(DISTINCT seed_id) as c FROM matches").fetchone()["c"]
+                rows = conn.execute(
+                    """SELECT s.seed_id, s.title, s.created_at, COUNT(m.match_id) as match_count,
+                              MAX(m.total_score) as top_score, 0 as is_multi_exit
+                       FROM seeds s LEFT JOIN matches m ON s.seed_id = m.seed_id
+                       GROUP BY s.seed_id ORDER BY s.created_at DESC
+                       LIMIT ? OFFSET ?""",
+                    (per_page, offset),
+                ).fetchall()
+    except Exception:
+        total, rows = 0, []
 
     total_pages = max(1, math.ceil(total / per_page))
     return templates.TemplateResponse(request, "results_list.html", {
@@ -584,65 +587,73 @@ async def needs_page(
 
     where = "WHERE " + " AND ".join(conditions)
 
-    with connect(settings.matcher_db_path) as conn:
-        total = conn.execute(f"SELECT COUNT(*) as c FROM companies {where}", params).fetchone()["c"]
-        total_all = conn.execute("SELECT COUNT(*) as c FROM companies").fetchone()["c"]
-        with_needs = conn.execute(
-            "SELECT COUNT(*) as c FROM companies WHERE estimated_needs IS NOT NULL AND LENGTH(estimated_needs) > 0"
-        ).fetchone()["c"]
+    try:
+        with connect(settings.matcher_db_path) as conn:
+            total = conn.execute(f"SELECT COUNT(*) as c FROM companies {where}", params).fetchone()["c"]
+            total_all = conn.execute("SELECT COUNT(*) as c FROM companies").fetchone()["c"]
+            with_needs = conn.execute(
+                "SELECT COUNT(*) as c FROM companies WHERE estimated_needs IS NOT NULL AND LENGTH(estimated_needs) > 0"
+            ).fetchone()["c"]
 
-        rows = conn.execute(
-            f"SELECT edinet_code, name, industry, rd_expense, rd_intensity, estimated_needs "
-            f"FROM companies {where} ORDER BY {sort} {order_sql} LIMIT ? OFFSET ?",
-            params + [per_page, offset],
-        ).fetchall()
-        industries_rows = conn.execute(
-            "SELECT DISTINCT industry FROM companies WHERE industry IS NOT NULL ORDER BY industry"
-        ).fetchall()
-
-        # Industry summary for grouped + dashboard views
-        industry_summary = []
-        if view in ("industry", "dashboard"):
-            industry_summary = conn.execute(
-                """SELECT industry, COUNT(*) as cnt, AVG(rd_expense) as avg_rd
-                   FROM companies
-                   WHERE estimated_needs IS NOT NULL AND LENGTH(estimated_needs) > 0
-                     AND industry IS NOT NULL AND industry != ''
-                   GROUP BY industry ORDER BY cnt DESC"""
+            rows = conn.execute(
+                f"SELECT edinet_code, name, industry, rd_expense, rd_intensity, estimated_needs "
+                f"FROM companies {where} ORDER BY {sort} {order_sql} LIMIT ? OFFSET ?",
+                params + [per_page, offset],
+            ).fetchall()
+            industries_rows = conn.execute(
+                "SELECT DISTINCT industry FROM companies WHERE industry IS NOT NULL ORDER BY industry"
             ).fetchall()
 
-        # Collaboration stats for dashboard
-        collab_stats = None
-        collab_top = []
-        if view == "dashboard":
-            cs = conn.execute(
-                "SELECT COUNT(*) as total_records, COUNT(DISTINCT edinet_code) as companies_with FROM collaborations"
-            ).fetchone()
-            collab_stats = {"total_records": cs["total_records"], "companies_with": cs["companies_with"]}
-            collab_top_rows = conn.execute(
-                """SELECT c.edinet_code, c.name, c.industry, c.estimated_needs,
-                          COUNT(DISTINCT cl.university_name) as uni_count,
-                          SUM(cl.count) as total_papers
-                   FROM collaborations cl JOIN companies c ON cl.edinet_code = c.edinet_code
-                   GROUP BY cl.edinet_code ORDER BY total_papers DESC LIMIT 10"""
-            ).fetchall()
+            # Industry summary for grouped + dashboard views
+            industry_summary = []
+            if view in ("industry", "dashboard"):
+                industry_summary = conn.execute(
+                    """SELECT industry, COUNT(*) as cnt, AVG(rd_expense) as avg_rd
+                       FROM companies
+                       WHERE estimated_needs IS NOT NULL AND LENGTH(estimated_needs) > 0
+                         AND industry IS NOT NULL AND industry != ''
+                       GROUP BY industry ORDER BY cnt DESC"""
+                ).fetchall()
+
+            # Collaboration stats for dashboard
+            collab_stats = None
             collab_top = []
-            for r in collab_top_rows:
-                ct = dict(r)
-                ct["domains"] = _extract_domains(ct.get("estimated_needs", ""))
-                collab_top.append(ct)
+            if view == "dashboard":
+                cs = conn.execute(
+                    "SELECT COUNT(*) as total_records, COUNT(DISTINCT edinet_code) as companies_with FROM collaborations"
+                ).fetchone()
+                collab_stats = {"total_records": cs["total_records"], "companies_with": cs["companies_with"]}
+                collab_top_rows = conn.execute(
+                    """SELECT c.edinet_code, c.name, c.industry, c.estimated_needs,
+                              COUNT(DISTINCT cl.university_name) as uni_count,
+                              SUM(cl.count) as total_papers
+                       FROM collaborations cl JOIN companies c ON cl.edinet_code = c.edinet_code
+                       GROUP BY cl.edinet_code ORDER BY total_papers DESC LIMIT 10"""
+                ).fetchall()
+                collab_top = []
+                for r in collab_top_rows:
+                    ct = dict(r)
+                    ct["domains"] = _extract_domains(ct.get("estimated_needs", ""))
+                    collab_top.append(ct)
+    except Exception:
+        total, total_all, with_needs = 0, 0, 0
+        rows, industries_rows, industry_summary = [], [], []
+        collab_stats, collab_top = None, []
 
     # Domain summary for domain + dashboard views
     domain_summary = []
     if view in ("domain", "dashboard"):
         domain_counts: dict[str, int] = {}
-        with connect(settings.matcher_db_path) as conn:
-            all_needs = conn.execute(
-                "SELECT estimated_needs FROM companies WHERE estimated_needs IS NOT NULL"
-            ).fetchall()
-        for row in all_needs:
-            for d in _extract_domains(row["estimated_needs"]):
-                domain_counts[d] = domain_counts.get(d, 0) + 1
+        try:
+            with connect(settings.matcher_db_path) as conn:
+                all_needs = conn.execute(
+                    "SELECT estimated_needs FROM companies WHERE estimated_needs IS NOT NULL"
+                ).fetchall()
+            for row in all_needs:
+                for d in _extract_domains(row["estimated_needs"]):
+                    domain_counts[d] = domain_counts.get(d, 0) + 1
+        except Exception:
+            pass
         domain_summary = sorted(domain_counts.items(), key=lambda x: x[1], reverse=True)
 
     # Attach domains to each company for display
@@ -678,16 +689,19 @@ async def needs_page(
 
 @app.get("/needs/about", response_class=HTMLResponse)
 async def needs_about(request: Request):
-    with connect(settings.matcher_db_path) as conn:
-        company_count = conn.execute("SELECT COUNT(*) as c FROM companies").fetchone()["c"]
-        v2_count = conn.execute(
-            "SELECT COUNT(*) as c FROM companies "
-            "WHERE midterm_plan_text IS NOT NULL AND LENGTH(midterm_plan_text) > 100"
-        ).fetchone()["c"]
-        v1_count = company_count - v2_count
-        collab_count = conn.execute(
-            "SELECT COUNT(*) as c FROM collaborations"
-        ).fetchone()["c"]
+    try:
+        with connect(settings.matcher_db_path) as conn:
+            company_count = conn.execute("SELECT COUNT(*) as c FROM companies").fetchone()["c"]
+            v2_count = conn.execute(
+                "SELECT COUNT(*) as c FROM companies "
+                "WHERE midterm_plan_text IS NOT NULL AND LENGTH(midterm_plan_text) > 100"
+            ).fetchone()["c"]
+            v1_count = company_count - v2_count
+            collab_count = conn.execute(
+                "SELECT COUNT(*) as c FROM collaborations"
+            ).fetchone()["c"]
+    except Exception:
+        company_count, v2_count, v1_count, collab_count = 0, 0, 0, 0
     v2_pct = round(v2_count / company_count * 100, 1) if company_count else 0
     return templates.TemplateResponse(request, "needs_about.html", {
         "company_count": company_count,
@@ -702,78 +716,83 @@ async def needs_about(request: Request):
 @app.get("/themes", response_class=HTMLResponse)
 async def themes_page(request: Request):
     """Display humanities theme taxonomy and business ambition taxonomy."""
-    with connect(settings.matcher_db_path) as conn:
-        tables = {r["name"] for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        )}
+    try:
+        with connect(settings.matcher_db_path) as conn:
+            tables = {r["name"] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )}
 
-        # Humanities themes (33-theme taxonomy)
-        themes_data = []
-        if "taxonomy_themes" in tables and "company_taxonomy_proximity" in tables:
-            rows = conn.execute("""
-                SELECT t.theme_id, t.major_id, t.major_name, t.name, t.keywords,
-                       ROUND(AVG(p.proximity), 3) as avg_prox,
-                       ROUND(MAX(p.proximity), 3) as max_prox,
-                       SUM(CASE WHEN p.narrative_count > 0 THEN 1 ELSE 0 END) as match_count
-                FROM taxonomy_themes t
-                JOIN company_taxonomy_proximity p ON t.theme_id = p.theme_id
-                GROUP BY t.theme_id
-                ORDER BY t.major_id, t.theme_id
-            """).fetchall()
-            for r in rows:
-                d = dict(r)
+            # Humanities themes (33-theme taxonomy)
+            themes_data = []
+            if "taxonomy_themes" in tables and "company_taxonomy_proximity" in tables:
+                rows = conn.execute("""
+                    SELECT t.theme_id, t.major_id, t.major_name, t.name, t.keywords,
+                           ROUND(AVG(p.proximity), 3) as avg_prox,
+                           ROUND(MAX(p.proximity), 3) as max_prox,
+                           SUM(CASE WHEN p.narrative_count > 0 THEN 1 ELSE 0 END) as match_count
+                    FROM taxonomy_themes t
+                    JOIN company_taxonomy_proximity p ON t.theme_id = p.theme_id
+                    GROUP BY t.theme_id
+                    ORDER BY t.major_id, t.theme_id
+                """).fetchall()
+                for r in rows:
+                    d = dict(r)
+                    try:
+                        d["parsed_keywords"] = json.loads(d.get("keywords", "[]"))
+                    except (json.JSONDecodeError, TypeError):
+                        d["parsed_keywords"] = []
+                    themes_data.append(d)
+
+            # Tech taxonomy (from JSON file)
+            tech_taxonomy_data = []
+            tech_path = settings.matcher_db_path.parent / "tech_taxonomy.json"
+            if tech_path.exists():
+                with open(tech_path) as f:
+                    tech_taxonomy_data = json.load(f).get("themes", [])
+
+            tech_needs_count = conn.execute(
+                "SELECT COUNT(*) as c FROM companies WHERE tech_needs_at IS NOT NULL"
+            ).fetchone()["c"]
+
+            # Business ambition taxonomy (from JSON file)
+            ambition_data = []
+            ambition_path = settings.matcher_db_path.parent / "ambition_taxonomy.json"
+            if ambition_path.exists():
+                with open(ambition_path) as f:
+                    ambition_data = json.load(f).get("themes", [])
+
+            # Ambition stats
+            ambition_count = conn.execute(
+                "SELECT COUNT(*) as c FROM companies WHERE ambitions_at IS NOT NULL"
+            ).fetchone()["c"]
+            ambition_avg = 0
+            if ambition_count > 0:
+                row = conn.execute(
+                    "SELECT ROUND(AVG(json_array_length(json_extract(ambitions_json, '$.ambitions'))), 1) as avg "
+                    "FROM companies WHERE ambitions_json IS NOT NULL"
+                ).fetchone()
+                ambition_avg = row["avg"] if row else 0
+
+            # Maturity distribution
+            maturity_dist = {"concrete": 0, "directional": 0, "exploratory": 0}
+            mat_rows = conn.execute(
+                "SELECT ambitions_json FROM companies WHERE ambitions_json IS NOT NULL"
+            ).fetchall()
+            for mr in mat_rows:
                 try:
-                    d["parsed_keywords"] = json.loads(d.get("keywords", "[]"))
+                    data = json.loads(mr["ambitions_json"])
+                    for amb in data.get("ambitions", []):
+                        m = amb.get("maturity", "")
+                        if m in maturity_dist:
+                            maturity_dist[m] += 1
                 except (json.JSONDecodeError, TypeError):
-                    d["parsed_keywords"] = []
-                themes_data.append(d)
+                    pass
 
-        # Tech taxonomy (from JSON file)
-        tech_taxonomy_data = []
-        tech_path = settings.matcher_db_path.parent / "tech_taxonomy.json"
-        if tech_path.exists():
-            with open(tech_path) as f:
-                tech_taxonomy_data = json.load(f).get("themes", [])
-
-        tech_needs_count = conn.execute(
-            "SELECT COUNT(*) as c FROM companies WHERE tech_needs_at IS NOT NULL"
-        ).fetchone()["c"]
-
-        # Business ambition taxonomy (from JSON file)
-        ambition_data = []
-        ambition_path = settings.matcher_db_path.parent / "ambition_taxonomy.json"
-        if ambition_path.exists():
-            with open(ambition_path) as f:
-                ambition_data = json.load(f).get("themes", [])
-
-        # Ambition stats
-        ambition_count = conn.execute(
-            "SELECT COUNT(*) as c FROM companies WHERE ambitions_at IS NOT NULL"
-        ).fetchone()["c"]
-        ambition_avg = 0
-        if ambition_count > 0:
-            row = conn.execute(
-                "SELECT ROUND(AVG(json_array_length(json_extract(ambitions_json, '$.ambitions'))), 1) as avg "
-                "FROM companies WHERE ambitions_json IS NOT NULL"
-            ).fetchone()
-            ambition_avg = row["avg"] if row else 0
-
-        # Maturity distribution
+            company_count = conn.execute("SELECT COUNT(*) as c FROM companies").fetchone()["c"]
+    except Exception:
+        themes_data, tech_taxonomy_data, ambition_data = [], [], []
+        tech_needs_count, ambition_count, ambition_avg, company_count = 0, 0, 0, 0
         maturity_dist = {"concrete": 0, "directional": 0, "exploratory": 0}
-        mat_rows = conn.execute(
-            "SELECT ambitions_json FROM companies WHERE ambitions_json IS NOT NULL"
-        ).fetchall()
-        for mr in mat_rows:
-            try:
-                data = json.loads(mr["ambitions_json"])
-                for amb in data.get("ambitions", []):
-                    m = amb.get("maturity", "")
-                    if m in maturity_dist:
-                        maturity_dist[m] += 1
-            except (json.JSONDecodeError, TypeError):
-                pass
-
-        company_count = conn.execute("SELECT COUNT(*) as c FROM companies").fetchone()["c"]
     return templates.TemplateResponse(request, "themes.html", {
         "themes": themes_data,
         "tech_themes": tech_taxonomy_data,
