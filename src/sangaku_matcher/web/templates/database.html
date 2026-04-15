@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}データベース概要 -- sangaku-matcher{% endblock %}
+{% block content %}
+<div class="guide-page">
+    <h2>データベース概要</h2>
+    <p class="text-muted guide-lead">sangaku-matcherが使用するデータベースの構造、データソース、更新方法について説明します。</p>
+
+    <nav class="guide-toc" aria-label="目次">
+        <h3>目次</h3>
+        <ol>
+            <li><a href="#overview">データベースの全体像</a></li>
+            <li><a href="#stats">現在の統計</a></li>
+            <li><a href="#companies">企業データ</a></li>
+            <li><a href="#themes">テーマ体系データ</a></li>
+            <li><a href="#matching">マッチングデータ</a></li>
+            <li><a href="#collab">連携実績データ</a></li>
+            <li><a href="#sources">データソース</a></li>
+        </ol>
+    </nav>
+
+    <section id="overview" class="guide-section">
+        <h3>1. データベースの全体像</h3>
+        <p>sangaku-matcherのデータベースはSQLite形式で、以下の4つの主要データ領域で構成されています。すべてのデータは公開情報（有価証券報告書、特許情報、論文データベース）から取得・推定されたものです。</p>
+
+        <div class="guide-feature-grid">
+            <div class="guide-feature">
+                <div class="guide-feature-title">企業データ</div>
+                <p>{{ stats.companies }}社の上場企業情報。基本情報（業種・売上・従業員数）に加え、R&D投資額、AIが推定した技術ニーズ・人文社会ニーズ・新規事業野心を含みます。</p>
+            </div>
+            <div class="guide-feature">
+                <div class="guide-feature-title">テーマ体系</div>
+                <p>122テーマ（技術49・社会33・野心40）の3軸分類体系。各テーマにはキーワードと埋め込みベクトル（重心）が付与されています。</p>
+            </div>
+            <div class="guide-feature">
+                <div class="guide-feature-title">テーマ近接度</div>
+                <p>{{ stats.proximity_total|default('485,000+', true) }}件の企業-テーマ近接度データ。各企業がどのテーマにどれだけ近いかを数値化しています。</p>
+            </div>
+            <div class="guide-feature">
+                <div class="guide-feature-title">連携実績</div>
+                <p>{{ stats.collaborations }}件の大学-企業共同研究・特許の実績データ。過去の連携実績をスコアリングに活用しています。</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="stats" class="guide-section">
+        <h3>2. 現在の統計</h3>
+        <table class="guide-table">
+            <thead>
+                <tr><th>テーブル</th><th>件数</th><th>説明</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>companies</td><td>{{ stats.companies }}</td><td>企業マスター（有報から取得）</td></tr>
+                <tr><td>seeds</td><td>{{ stats.seeds }}</td><td>入力された研究テーマ</td></tr>
+                <tr><td>matches</td><td>{{ stats.matches }}</td><td>シングルランキング結果</td></tr>
+                <tr><td>multi_exit_matches</td><td>{{ stats.multi_exit_matches }}</td><td>3出口ルート結果</td></tr>
+                <tr><td>collaborations</td><td>{{ stats.collaborations }}</td><td>大学-企業連携実績</td></tr>
+                <tr><td>tech_taxonomy_themes</td><td>{{ stats.tech_themes }}</td><td>技術テーマ定義</td></tr>
+                <tr><td>taxonomy_themes</td><td>{{ stats.social_themes }}</td><td>社会課題テーマ定義</td></tr>
+                <tr><td>ambition_taxonomy_themes</td><td>{{ stats.ambition_themes }}</td><td>野心テーマ定義</td></tr>
+                <tr><td>tech_taxonomy_proximity</td><td>{{ stats.tech_proximity }}</td><td>企業-技術テーマ近接度</td></tr>
+                <tr><td>company_taxonomy_proximity</td><td>{{ stats.social_proximity }}</td><td>企業-社会テーマ近接度</td></tr>
+                <tr><td>ambition_taxonomy_proximity</td><td>{{ stats.ambition_proximity }}</td><td>企業-野心テーマ近接度</td></tr>
+                <tr><td>industry_stats</td><td>{{ stats.industry_stats }}</td><td>業種別R&D統計</td></tr>
+            </tbody>
+        </table>
+    </section>
+
+    <section id="companies" class="guide-section">
+        <h3>3. 企業データ</h3>
+        <p>企業データはEDINET（金融庁の電子開示システム）から取得した有価証券報告書を解析して構築しています。各企業について以下の情報を保持しています。</p>
+
+        <h4>基本情報</h4>
+        <ul>
+            <li><strong>edinet_code</strong>: EDINET固有コード（主キー）</li>
+            <li><strong>sec_code</strong>: 証券コード</li>
+            <li><strong>name</strong>: 企業名</li>
+            <li><strong>industry</strong>: 業種分類</li>
+            <li><strong>revenue</strong>: 売上高（百万円）</li>
+            <li><strong>employees</strong>: 従業員数</li>
+        </ul>
+
+        <h4>R&D関連情報</h4>
+        <ul>
+            <li><strong>rd_expense</strong>: 研究開発費（百万円）</li>
+            <li><strong>rd_intensity</strong>: R&D投資比率（研究開発費/売上高）</li>
+            <li><strong>rd_text</strong>: 有報のR&D記述テキスト</li>
+            <li><strong>rd_text_vector</strong>: R&Dテキストの埋め込みベクトル（384次元）</li>
+        </ul>
+
+        <h4>AI推定ニーズ</h4>
+        <p>有報のテキストをAI（Claude）で分析し、以下の3種類のニーズを推定しています。各ニーズにはテキスト説明と埋め込みベクトルが付与されています。</p>
+        <ul>
+            <li><strong>tech_needs</strong>: 技術ニーズ（必要としている技術領域）</li>
+            <li><strong>humanities_needs</strong>: 人文社会ニーズ（社会的課題への関心）</li>
+            <li><strong>ambitions</strong>: 新規事業の野心（中期経営計画からの推定）</li>
+        </ul>
+
+        <h4>その他</h4>
+        <ul>
+            <li><strong>open_inno_score</strong>: オープンイノベーション度（外部連携の積極性）</li>
+            <li><strong>midterm_plan_text</strong>: 中期経営計画のテキスト</li>
+        </ul>
+    </section>
+
+    <section id="themes" class="guide-section">
+        <h3>4. テーマ体系データ</h3>
+        <p>テーマ体系は、有価証券報告書のテキストをGTA（Grounded Theory Approach）に着想を得たボトムアップ分析で構造化したものです。3つの軸で合計122テーマが定義されています。</p>
+
+        <h4>技術テーマ（49テーマ）</h4>
+        <p>企業のR&D記述から抽出した技術領域の分類です。「AI・機械学習」「半導体・電子デバイス」「バイオテクノロジー」などの大分類の下に、具体的な技術テーマが配置されています。</p>
+
+        <h4>社会課題テーマ（33テーマ）</h4>
+        <p>企業が取り組む社会的課題の分類です。「カーボンニュートラル」「健康・ウェルビーイング」「デジタル格差」などのテーマが含まれます。人文社会系の研究者にとって、技術テーマだけでは見えない連携先の発見に有用です。</p>
+
+        <h4>野心テーマ（40テーマ）</h4>
+        <p>企業の中期経営計画や統合報告書から抽出した、新規事業・成長領域のテーマです。「宇宙ビジネス」「量子コンピューティング」「フードテック」など、企業が将来的に展開したいと考えている領域を反映しています。</p>
+
+        <h4>テーマ近接度</h4>
+        <p>各企業と各テーマの間の近接度（proximity）が計算されています。近接度は0.0〜1.0の値で、企業のテキスト情報とテーマの重心ベクトルとのコサイン類似度に基づいています。</p>
+    </section>
+
+    <section id="matching" class="guide-section">
+        <h3>5. マッチングデータ</h3>
+        <p>ユーザーが入力した研究テーマ（seed）と、マッチング結果が保存されています。</p>
+
+        <h4>seeds（研究テーマ）</h4>
+        <p>入力された研究テーマのタイトル、説明文、DOI（論文の場合）、特許番号（特許の場合）、埋め込みベクトルが保存されます。過去に入力したテーマの結果は<a href="/results">結果一覧</a>から再閲覧できます。</p>
+
+        <h4>multi_exit_matches（3出口ルート結果）</h4>
+        <p>3つの出口ルート（R&D、新領域探索、探索的対話）ごとに、スコア上位の企業とその内訳（10次元スコア）、AIが生成した連携仮説が保存されています。</p>
+    </section>
+
+    <section id="collab" class="guide-section">
+        <h3>6. 連携実績データ</h3>
+        <p>大学と企業の過去の連携実績（共同特許・共著論文）のデータです。EDINET企業コードと大学名をキーに、連携の種類（特許/論文）、件数、最終年度を記録しています。この実績データは、スコアリングの「連携実績」次元に反映されます。</p>
+        <p>現在{{ stats.collaborations }}件の連携実績が登録されており、過去に特定の大学と連携実績がある企業は、同大学の研究者とのマッチングで「連携実績」スコアが加点されます。</p>
+    </section>
+
+    <section id="sources" class="guide-section">
+        <h3>7. データソース</h3>
+        <table class="guide-table">
+            <thead>
+                <tr><th>データ</th><th>ソース</th><th>取得方法</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>企業基本情報</td><td>EDINET（金融庁）</td><td>IR Collector経由で有報を自動取得・解析</td></tr>
+                <tr><td>R&D情報</td><td>有価証券報告書</td><td>テキスト抽出+埋め込みベクトル化</td></tr>
+                <tr><td>推定ニーズ</td><td>有報テキスト</td><td>Claude AIによる構造化分析</td></tr>
+                <tr><td>テーマ体系</td><td>有報テキスト集約</td><td>GTA風ボトムアップ分類+手動精査</td></tr>
+                <tr><td>連携実績</td><td>特許庁・CiNii等</td><td>公開データの名寄せ・集約</td></tr>
+                <tr><td>業種統計</td><td>計算済み</td><td>企業データからの集計</td></tr>
+            </tbody>
+        </table>
+        <p style="margin-top:1rem">埋め込みモデルには<code>intfloat/multilingual-e5-small</code>（384次元）を使用しています。日本語テキストの意味的類似度計算に最適化された多言語モデルです。</p>
+    </section>
+</div>
+{% endblock %}

@@ -468,6 +468,39 @@ def _extract_domains(needs_text: str) -> list[str]:
     return domains
 
 
+@app.get("/guide", response_class=HTMLResponse)
+async def guide_page(request: Request):
+    """Display the usage guide page."""
+    return templates.TemplateResponse(request, "guide.html", {
+        "company_count": _company_count(),
+    })
+
+
+@app.get("/database", response_class=HTMLResponse)
+async def database_page(request: Request):
+    """Display the database overview page."""
+    with connect(settings.matcher_db_path) as conn:
+        stats = {}
+        for table, key in [
+            ("companies", "companies"), ("seeds", "seeds"),
+            ("matches", "matches"), ("multi_exit_matches", "multi_exit_matches"),
+            ("collaborations", "collaborations"),
+            ("tech_taxonomy_themes", "tech_themes"),
+            ("taxonomy_themes", "social_themes"),
+            ("ambition_taxonomy_themes", "ambition_themes"),
+            ("tech_taxonomy_proximity", "tech_proximity"),
+            ("company_taxonomy_proximity", "social_proximity"),
+            ("ambition_taxonomy_proximity", "ambition_proximity"),
+            ("industry_stats", "industry_stats"),
+        ]:
+            try:
+                row = conn.execute(f"SELECT COUNT(*) as c FROM [{table}]").fetchone()
+                stats[key] = f"{row['c']:,}"
+            except Exception:
+                stats[key] = "N/A"
+    return templates.TemplateResponse(request, "database.html", {"stats": stats})
+
+
 @app.get("/needs", response_class=HTMLResponse)
 async def needs_page(
     request: Request,

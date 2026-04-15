@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}使い方ガイド -- sangaku-matcher{% endblock %}
+{% block content %}
+<div class="guide-page">
+    <h2>使い方ガイド</h2>
+    <p class="text-muted guide-lead">sangaku-matcherは、大学の研究テーマを入力すると、{{ company_count }}社の企業データベースから連携可能性の高い候補企業を3つの出口ルートでランキングするツールです。</p>
+
+    <nav class="guide-toc" aria-label="目次">
+        <h3>目次</h3>
+        <ol>
+            <li><a href="#overview">概要と特徴</a></li>
+            <li><a href="#quickstart">クイックスタート</a></li>
+            <li><a href="#exit-routes">3つの出口ルート</a></li>
+            <li><a href="#reading-results">結果の読み方</a></li>
+            <li><a href="#features">各機能の使い方</a></li>
+            <li><a href="#tips">精度を高めるコツ</a></li>
+            <li><a href="#limitations">注意事項・制約</a></li>
+        </ol>
+    </nav>
+
+    <section id="overview" class="guide-section">
+        <h3>1. 概要と特徴</h3>
+        <p>sangaku-matcherは、大学の技術シーズと企業の潜在ニーズをAIでマッチングする産学連携支援ツールです。従来の産学連携では「知っている企業」や「過去に縁のある企業」に偏りがちでしたが、本ツールは有価証券報告書（有報）の公開情報をAIで解析し、客観的な根拠に基づいて連携候補を提示します。</p>
+        <div class="guide-feature-grid">
+            <div class="guide-feature">
+                <div class="guide-feature-title">バックキャスト型推定</div>
+                <p>企業が課題を公開していなくても、有報・IR情報から潜在ニーズを推定します。これは既存の商用マッチングサービスにはない独自のアプローチです。</p>
+            </div>
+            <div class="guide-feature">
+                <div class="guide-feature-title">3軸122テーマ体系</div>
+                <p>技術テーマ（49）、社会課題テーマ（33）、野心テーマ（40）の3軸で多角的に分析。技術的な接点だけでなく、企業の新規事業への関心や社会的課題への取り組みも評価します。</p>
+            </div>
+            <div class="guide-feature">
+                <div class="guide-feature-title">3つの出口ルート</div>
+                <p>「共同研究（R&D）」「新領域探索」「探索的対話」の3つの連携パターンで結果を提示。目的に応じた最適な連携先を見つけられます。</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="quickstart" class="guide-section">
+        <h3>2. クイックスタート</h3>
+        <div class="guide-steps">
+            <div class="guide-step">
+                <div class="guide-step-number">1</div>
+                <div class="guide-step-content">
+                    <div class="guide-step-title">研究テーマを入力</div>
+                    <p><a href="/">AI解析ページ</a>のテキストエリアに、研究テーマの概要を入力します。10文字以上の具体的な説明を入力してください。専門用語を含む詳しい説明ほど、精度の高いマッチングが得られます。</p>
+                </div>
+            </div>
+            <div class="guide-step">
+                <div class="guide-step-number">2</div>
+                <div class="guide-step-content">
+                    <div class="guide-step-title">「仮説を構築」をクリック</div>
+                    <p>ボタンを押すと、AIが研究テーマを解析し、122テーマとの類似度計算、企業データベースとの照合、3つの出口ルートでのランキングを実行します。処理には数十秒かかります。</p>
+                </div>
+            </div>
+            <div class="guide-step">
+                <div class="guide-step-number">3</div>
+                <div class="guide-step-content">
+                    <div class="guide-step-title">結果を確認</div>
+                    <p>3つの出口ルートごとに、スコア上位の企業がランキング表示されます。各企業のスコア内訳（レーダーチャート）と連携仮説を確認し、アプローチ先の検討に活用してください。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="exit-routes" class="guide-section">
+        <h3>3. 3つの出口ルート</h3>
+        <p>研究テーマと企業の関係性に応じて、3つの異なる連携パターンで候補を提示します。それぞれ異なるスコアリング重みを使用しているため、同じ研究テーマでもルートによって異なる企業が上位に来ます。</p>
+
+        <div class="guide-exit-cards">
+            <div class="guide-exit-card">
+                <div class="guide-exit-label" style="background:#A86B50">共同研究（R&D）</div>
+                <p>企業側に明確な技術課題・ニーズがあり、研究者のシーズが直接それに応える連携パターンです。成果は論文・特許・プロトタイプなど具体的な形になります。</p>
+                <div class="guide-exit-emphasis">重視する要素: 技術的近接性、ニーズ適合度、吸収能力</div>
+            </div>
+            <div class="guide-exit-card">
+                <div class="guide-exit-label" style="background:#2E7D6B">共同研究（新領域探索）</div>
+                <p>企業が挑戦しようとしている新領域に、研究者の知見で貢献する連携パターンです。問いの設定自体に研究者が関わります。</p>
+                <div class="guide-exit-emphasis">重視する要素: 野心テーマ適合度、オープンイノベーション度、将来オプション価値</div>
+            </div>
+            <div class="guide-exit-card">
+                <div class="guide-exit-label" style="background:#6B5445">探索的対話</div>
+                <p>具体的な共同研究の形はまだ見えないが、テーマ的な親和性がある場合の連携パターンです。まず対話して接点を探る段階です。</p>
+                <div class="guide-exit-emphasis">重視する要素: テーマ幅、人文社会的価値、将来オプション価値</div>
+            </div>
+        </div>
+    </section>
+
+    <section id="reading-results" class="guide-section">
+        <h3>4. 結果の読み方</h3>
+        <h4>スコアについて</h4>
+        <p>各企業のスコアは0.0〜1.0の範囲で、以下の次元の加重平均で算出されます。出口ルートによって重みが異なるため、同じ企業でもルートごとにスコアが変わります。</p>
+        <table class="guide-table">
+            <thead>
+                <tr><th>次元</th><th>説明</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>技術的近接性</td><td>研究テーマと企業のR&D領域がどれだけ近いか</td></tr>
+                <tr><td>ニーズ適合度</td><td>企業の推定ニーズと研究テーマの適合度</td></tr>
+                <tr><td>吸収能力</td><td>R&D投資比率など、企業が新技術を活かす能力</td></tr>
+                <tr><td>連携実績</td><td>大学との過去の共同研究・特許の実績</td></tr>
+                <tr><td>オープンイノベーション度</td><td>外部連携への積極性</td></tr>
+                <tr><td>将来オプション価値</td><td>中期経営計画との整合性</td></tr>
+                <tr><td>人文社会的価値</td><td>社会課題への関心・人文学的テーマとの親和性</td></tr>
+                <tr><td>野心テーマ適合度</td><td>新規事業・野心的テーマとの類似度</td></tr>
+                <tr><td>テーマ幅</td><td>関連テーマの多様性（探索的対話向け）</td></tr>
+                <tr><td>シナジー</td><td>複数次元の相乗効果ボーナス</td></tr>
+            </tbody>
+        </table>
+
+        <h4>連携仮説について</h4>
+        <p>各企業の結果には、AIが生成した連携仮説が添付されます。これは「なぜこの企業と連携すべきか」の根拠を示す参考情報です。最終的な連携判断は、必ず専門家（TLO担当者、コーディネーターなど）の評価を経て行ってください。</p>
+    </section>
+
+    <section id="features" class="guide-section">
+        <h3>5. 各機能の使い方</h3>
+
+        <h4>AI解析（トップページ）</h4>
+        <p>研究テーマを入力してマッチングを実行するメイン機能です。過去に実行した結果は<a href="/results">結果一覧</a>から再度確認できます。</p>
+
+        <h4>結果一覧</h4>
+        <p>過去に実行したマッチング結果の一覧です。タイトル、実行日時、マッチ件数、最高スコアが表示されます。結果をクリックすると詳細を確認できます。結果はMarkdownまたはJSON形式でダウンロードも可能です。</p>
+
+        <h4>企業一覧</h4>
+        <p>データベースに登録されている{{ company_count }}社の企業情報を閲覧できます。業種での絞り込み、名前検索が可能です。各企業をクリックすると、推定ニーズ、R&D情報、テーマ体系との近接度などの詳細を確認できます。</p>
+
+        <h4>ニーズ一覧</h4>
+        <p>企業のAI推定ニーズをダッシュボード形式で閲覧できます。業種別、技術ドメイン別のフィルタリングに対応しています。大学との共同研究実績データも確認できます。</p>
+
+        <h4>テーマ体系</h4>
+        <p>マッチングに使用する122テーマ（技術49・社会33・野心40）の分類体系を確認できます。各テーマのキーワードや、テーマごとの企業分布を閲覧できます。</p>
+    </section>
+
+    <section id="tips" class="guide-section">
+        <h3>6. 精度を高めるコツ</h3>
+        <div class="guide-tips">
+            <div class="guide-tip">
+                <div class="guide-tip-title">具体的に書く</div>
+                <p>「AIの研究」より「深層学習を用いた時系列データの異常検知手法。製造業の品質管理への応用を想定」のように、技術の詳細と応用先を含めると精度が上がります。</p>
+            </div>
+            <div class="guide-tip">
+                <div class="guide-tip-title">専門用語を含める</div>
+                <p>テーマ体系との類似度計算は埋め込みベクトルで行われるため、研究領域の専門用語を含めることで適切なテーマとマッチしやすくなります。</p>
+            </div>
+            <div class="guide-tip">
+                <div class="guide-tip-title">複数の表現で試す</div>
+                <p>同じ研究でも、技術面を強調した表現と社会的インパクトを強調した表現では異なる結果が得られます。目的に応じて入力を変えてみてください。</p>
+            </div>
+            <div class="guide-tip">
+                <div class="guide-tip-title">3つの出口ルートを比較する</div>
+                <p>R&D向けに高スコアの企業と探索的対話向けに高スコアの企業は異なります。連携の目的に応じて適切なルートの結果を参照してください。</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="limitations" class="guide-section">
+        <h3>7. 注意事項・制約</h3>
+        <ul class="guide-limitations">
+            <li>マッチング結果はAIによる仮説であり、最終的な連携判断は専門家の評価を経て行ってください。</li>
+            <li>企業データは有価証券報告書（有報）から取得しており、上場企業が中心です。未上場企業やベンチャー企業はデータベースに含まれていません。</li>
+            <li>推定ニーズはAIによる推定であり、企業の実際のニーズと異なる場合があります。</li>
+            <li>大学との共同研究実績データは特許・論文の公開情報に基づいており、非公開の連携は反映されていません。</li>
+            <li>入力された研究テーマの情報は、マッチング処理のためにサーバーで処理されます。機密性の高い未公開研究情報の入力にはご注意ください。</li>
+        </ul>
+    </section>
+</div>
+{% endblock %}

@@ -28,6 +28,8 @@
                 <li><a href="/companies" {% if "/companies" in request.url.path and "/needs" not in request.url.path %}class="active" aria-current="page"{% endif %}>企業一覧</a></li>
                 <li><a href="/needs" {% if "/needs" in request.url.path %}class="active" aria-current="page"{% endif %}>ニーズ一覧</a></li>
                 <li><a href="/themes" {% if "/themes" in request.url.path %}class="active" aria-current="page"{% endif %}>テーマ体系</a></li>
+                <li><a href="/guide" {% if "/guide" in request.url.path %}class="active" aria-current="page"{% endif %}>使い方</a></li>
+                <li><a href="/database" {% if "/database" in request.url.path %}class="active" aria-current="page"{% endif %}>DB概要</a></li>
             </ul>
         </div>
     </nav>
