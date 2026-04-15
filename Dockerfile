@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ && \
 RUN pip install --no-cache-dir \
     click pydantic pydantic-settings python-dotenv requests \
     numpy scipy pandas tenacity pdfplumber \
-    fastapi "uvicorn[standard]" jinja2 python-multipart \
+    fastapi "uvicorn[standard]" jinja2 python-multipart slowapi \
     onnxruntime "optimum[onnxruntime]" transformers tokenizers \
     sentence-transformers
 
