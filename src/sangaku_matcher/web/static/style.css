@@ -1,5 +1,5 @@
 /* sangaku-matcher — Miratuku CI Design System v2 */
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700&family=Noto+Serif+JP:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
 
 :root {
     --color-bg: #FAF8F6;
@@ -8,10 +8,11 @@
     --color-text: #2C1E14;
     --color-text-muted: #6B5445;
     --color-text-subtle: #8A7668;
-    --color-accent: #A86B50;
-    --color-accent-dark: #8B5840;
+    --color-accent: #783c28;
+    --color-accent-dark: #5c2e1e;
+    --color-accent-secondary: #A86B50;
     --color-accent-light: #FAE8DC;
-    --color-accent-gradient: linear-gradient(135deg, #C4866A 0%, #A86B50 50%, #8B5840 100%);
+    --color-accent-gradient: linear-gradient(135deg, #A86B50 0%, #783c28 50%, #5c2e1e 100%);
     --color-border: #E8DDD4;
     --color-border-light: #F0E8E0;
     --color-muted-bg: #F5ECE4;
@@ -36,7 +37,7 @@
     --shadow-md: 0 4px 12px rgba(44,30,20,0.06);
     --shadow-lg: 0 8px 24px rgba(44,30,20,0.08);
     --shadow-xl: 0 16px 48px rgba(44,30,20,0.1);
-    --shadow-accent: 0 4px 16px rgba(168,107,80,0.2);
+    --shadow-accent: 0 4px 16px rgba(120,60,40,0.2);
 
     /* Radius scale */
     --radius-sm: 6px;
@@ -78,6 +79,58 @@ body {
     transform: translateY(0);
 }
 
+/* Foresight Tools Shared Nav */
+.ft-nav {
+    background: var(--color-nav-bg);
+    border-bottom: 1px solid rgba(245,236,228,0.08);
+}
+.ft-nav-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 10px 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.ft-nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+.ft-nav-suite {
+    font-size: 11px;
+    font-weight: 500;
+    color: rgba(245,236,228,0.5);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    text-decoration: none;
+}
+.ft-nav-suite:hover { color: rgba(245,236,228,0.8); }
+.ft-nav-divider {
+    width: 1px;
+    height: 16px;
+    background: rgba(245,236,228,0.15);
+}
+.ft-nav-title {
+    font-family: 'Noto Serif JP', 'Hiragino Mincho ProN', Georgia, serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-nav-text);
+    letter-spacing: 0.02em;
+}
+.ft-nav-links {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.ft-nav-links a {
+    font-size: 12px;
+    color: rgba(245,236,228,0.6);
+    text-decoration: none;
+    transition: color 0.15s;
+}
+.ft-nav-links a:hover { color: var(--color-nav-text); }
+
 /* Navigation */
 .site-nav {
     background: var(--color-nav-bg);
@@ -109,7 +162,8 @@ body {
     padding: 0.9rem 0;
 }
 .site-nav .brand-name {
-    font-size: 1.1rem;
+    font-family: 'Noto Serif JP', 'Hiragino Mincho ProN', Georgia, serif;
+    font-size: 1rem;
     font-weight: 600;
     color: #FFFFFF;
     letter-spacing: 0.04em;
@@ -145,7 +199,7 @@ body {
 }
 .site-nav .nav-links a.active {
     color: #FFFFFF;
-    background: rgba(168,107,80,0.4);
+    background: rgba(120,60,40,0.45);
     font-weight: 600;
 }
 
